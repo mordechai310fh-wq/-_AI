@@ -4,11 +4,9 @@ services:
     name: megnivolim-web
     runtime: node
     plan: free
-    buildCommand: npm install && npx prisma generate --schema=prisma/schema.postgres.prisma && npx prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss && node prisma/seed.mjs && npm run build
+    buildCommand: npm install --include=dev && npx prisma generate --schema=prisma/schema.postgres.prisma && npx prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss && node prisma/seed.mjs && npm run build
     startCommand: npm start
     envVars:
-      - key: NODE_ENV
-        value: production
       # Must match the socket service's name below - if you rename that
       # service, update this URL to match (Render URLs are
       # https://<service-name>.onrender.com).
@@ -34,7 +32,7 @@ services:
     name: megnivolim-socket
     runtime: node
     plan: free
-    buildCommand: npm install && node scripts/build-socket.mjs
+    buildCommand: npm install --include=dev && node scripts/build-socket.mjs
     startCommand: node dist-server/socket-server.js
     envVars:
       # Must be the exact same values entered for megnivolim-web above -
