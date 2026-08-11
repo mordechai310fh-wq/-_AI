@@ -154,36 +154,34 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
               />
             </div>
 
-            {mediaKind !== "video" && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => audioInputRef.current?.click()}
-                  className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground"
-                >
-                  🎵 הוסף סאונד
-                </button>
-                {audioFile && (
-                  <>
-                    <span className="text-xs text-muted">{audioFile.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAudioFile(null)}
-                      className="text-sm text-muted hover:text-foreground"
-                    >
-                      הסר
-                    </button>
-                  </>
-                )}
-                <input
-                  ref={audioInputRef}
-                  type="file"
-                  accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg"
-                  className="hidden"
-                  onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => audioInputRef.current?.click()}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground"
+              >
+                🎵 {mediaKind === "video" ? "הוסף/החלף סאונד לוידאו" : "הוסף סאונד"}
+              </button>
+              {audioFile && (
+                <>
+                  <span className="text-xs text-muted">{audioFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAudioFile(null)}
+                    className="text-sm text-muted hover:text-foreground"
+                  >
+                    הסר
+                  </button>
+                </>
+              )}
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg"
+                className="hidden"
+                onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
 
             {error && <p className="text-sm text-accent">{error}</p>}
 

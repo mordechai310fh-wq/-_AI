@@ -29,13 +29,19 @@ export default function PostMedia({
     return () => observer.disconnect();
   }, []);
 
+  // When a video has its own separate sound track attached (TikTok-style
+  // "add sound" over video), the video's native audio is silenced and the
+  // attached track drives sound instead - play/pause together so they stay
+  // roughly in sync.
+  const hasSeparateSound = !!videoUrl && !!audioUrl;
+
   useEffect(() => {
-    const media = videoRef.current ?? audioRef.current;
-    if (!media) return;
+    const media = [videoRef.current, audioRef.current].filter((m): m is HTMLVideoElement | HTMLAudioElement => !!m);
+    if (media.length === 0) return;
     if (inView) {
-      media.play().catch(() => {});
+      media.forEach((m) => m.play().catch(() => {}));
     } else {
-      media.pause();
+      media.forEach((m) => m.pause());
     }
   }, [inView]);
 
@@ -51,7 +57,7 @@ export default function PostMedia({
         <video
           ref={videoRef}
           src={videoUrl}
-          muted={muted}
+          muted={hasSeparateSound ? true : muted}
           loop
           playsInline
           className="h-full w-full object-cover"
@@ -61,7 +67,7 @@ export default function PostMedia({
         <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
       ) : null}
 
-      {audioUrl && !videoUrl && <audio ref={audioRef} src={audioUrl} muted={muted} loop />}
+      {audioUrl && <audio ref={audioRef} src={audioUrl} muted={muted} loop />}
 
       {hasSound && (
         <button
