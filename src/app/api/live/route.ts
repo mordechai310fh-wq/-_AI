@@ -37,7 +37,17 @@ export async function POST(req: NextRequest) {
     where: { hostId: user.id, status: "LIVE" },
   });
   if (existingLive) {
-    return NextResponse.json({ item: existingLive });
+    // Same request resubmitted (e.g. double-click) - return the same room
+    // instead of creating a duplicate.
+    if (existingLive.title === parsed.data.title && existingLive.broadcastMode === parsed.data.broadcastMode) {
+      return NextResponse.json({ item: existingLive });
+    }
+    // Otherwise the host explicitly started a new live (different title or
+    // mode) - the old one is stale, so close it out first.
+    await prisma.liveRoom.update({
+      where: { id: existingLive.id },
+      data: { status: "ENDED", endedAt: new Date() },
+    });
   }
 
   const room = await prisma.liveRoom.create({
