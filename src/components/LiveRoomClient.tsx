@@ -7,7 +7,22 @@ import LiveChat from "@/components/LiveChat";
 import FloatingHearts, { type FloatingHeartsHandle } from "@/components/FloatingHearts";
 import FlvPlayer from "@/components/FlvPlayer";
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+// STUN alone only works when both sides can be reached directly (or via a
+// NAT that's easy to traverse). Strangers on the public internet - mobile
+// data, corporate networks, symmetric NAT - often can't establish a direct
+// P2P path at all, so the stream silently never arrives. A TURN relay is the
+// fallback for exactly that case. This is openrelay.metered.ca's free public
+// TURN server (no signup needed) - fine for a hobby project's traffic level.
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+];
 
 type Props = {
   roomId: string;
