@@ -20,6 +20,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build artifacts and plain-CJS Electron bootstrap (not app source).
+    "dist-server/**",
+    "dist-electron/**",
+    "release/**",
+    "electron/**",
+    "next-standalone/**",
+    "resources/**",
   ]),
 ]);
 

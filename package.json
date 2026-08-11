@@ -2,6 +2,7 @@
   "name": "megnivolim",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "socket": "tsx --env-file=.env server/socket-server.ts",
@@ -9,7 +10,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "node --env-file=.env prisma/seed.mjs"
+    "seed": "node --env-file=.env prisma/seed.mjs",
+    "electron:prep": "npm run build && node scripts/prepare-standalone.mjs && node scripts/build-socket.mjs && node --env-file=.env scripts/build-template-db.mjs && node --env-file=.env scripts/build-runtime-env.mjs",
+    "electron:dist": "npm run electron:prep && electron-builder --win"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -30,6 +33,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^10.0.4",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
@@ -41,6 +47,31 @@
     "@prisma/client@5.22.0": true,
     "@prisma/engines@5.22.0": true,
     "prisma@5.22.0": true,
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "build": {
+    "appId": "com.megnivolim.desktop",
+    "productName": "המגניבולים",
+    "asar": true,
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      { "from": "next-standalone", "to": "next-standalone" },
+      { "from": "dist-server", "to": "dist-server" },
+      { "from": "resources", "to": "resources" }
+    ],
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "megnivolim-setup-${version}.${ext}"
+    },
+    "directories": {
+      "output": "release"
+    }
   }
 }

@@ -53,4 +53,8 @@ next-env.d.ts
 
 # electron build output
 /dist-electron/
+/dist-server/
 /release/
+/resources/
+/next-standalone/
+electron-test-*.log

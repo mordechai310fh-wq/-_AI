@@ -1,0 +1,46 @@
+envVarGroups:
+  - name: megnivolim-secrets
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: google/gemma-4-26b-a4b-it:free
+      - key: OWNER_USERNAME
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+
+services:
+  # Next.js app - feed, auth, admin, AI, everything except live chat/WebRTC.
+  - type: web
+    name: megnivolim-web
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate --schema=prisma/schema.postgres.prisma && npx prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss && node prisma/seed.mjs && npm run build
+    startCommand: npm start
+    envVarGroups:
+      - megnivolim-secrets
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Must match the socket service's name below - if you rename that
+      # service, update this URL to match (Render URLs are
+      # https://<service-name>.onrender.com).
+      - key: NEXT_PUBLIC_SOCKET_URL
+        value: https://megnivolim-socket.onrender.com
+
+  # Socket.io server - live chat, message likes, reactions, WebRTC signaling.
+  - type: web
+    name: megnivolim-socket
+    runtime: node
+    plan: free
+    buildCommand: npm install && node scripts/build-socket.mjs
+    startCommand: node dist-server/socket-server.js
+    envVarGroups:
+      - megnivolim-secrets

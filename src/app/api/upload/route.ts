@@ -32,12 +32,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "הקובץ גדול מדי (מקסימום 8MB)" }, { status: 400 });
   }
 
-  const uploadsDir = path.join(process.cwd(), "public", "uploads");
+  const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "public", "uploads");
   await mkdir(uploadsDir, { recursive: true });
 
   const filename = `${randomUUID()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(uploadsDir, filename), buffer);
+  await writeFile(path.join(/* turbopackIgnore: true */ uploadsDir, filename), buffer);
 
-  return NextResponse.json({ url: `/uploads/${filename}` });
+  // Served through our own route (not /uploads/*) so it works the same way
+  // whether files live under public/ (dev/self-host) or in the packaged
+  // app's userData folder (public/ is read-only once installed).
+  return NextResponse.json({ url: `/api/uploads/${filename}` });
 }

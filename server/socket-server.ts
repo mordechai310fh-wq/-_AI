@@ -3,7 +3,9 @@ import { Server, Socket } from "socket.io";
 import { verifySession } from "../src/lib/session";
 import { prisma } from "../src/lib/prisma";
 
-const PORT = Number(process.env.SOCKET_PORT ?? 4001);
+// Render (and most PaaS hosts) assign the public port via $PORT; SOCKET_PORT
+// is used for local dev / the Electron app, where we pick the port ourselves.
+const PORT = Number(process.env.PORT ?? process.env.SOCKET_PORT ?? 4001);
 
 const httpServer = createServer();
 const io = new Server(httpServer, {

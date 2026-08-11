@@ -30,7 +30,7 @@ npm run seed
 
 | משתנה | תיאור |
 |---|---|
-| `DATABASE_URL` | נתיב למסד SQLite המקומי |
+| `DATABASE_URL` | מקומית: נתיב למסד SQLite. ב-Render: connection string של Postgres (מ-Neon) |
 | `JWT_SECRET` | מפתח סודי לחתימת session tokens — ייחודי לכל סביבה |
 | `GROQ_API_KEY` | מפתח API של Groq עבור עוזר ה-AI "מגניב" (ספק ראשי) |
 | `OPENROUTER_API_KEY` | מפתח API של OpenRouter — משמש כגיבוי אוטומטי כשל-Groq יש הגבלת קצב (429) |
@@ -46,8 +46,11 @@ npm run seed
 - `src/app` — עמודי Next.js (App Router): `/login`, `/signup`, `/feed`, `/live`, `/live/[roomId]`, `/ai`, `/admin`.
 - `src/app/api` — API routes: אימות, פוסטים, לייקים, תגובות, לייבים, AI, ניהול.
 - `server/socket-server.ts` — שרת Socket.io נפרד: צ'אט חי, לייקים על הודעות, ריאקציות (❤️), וסיגנלינג ל-WebRTC.
-- `prisma/schema.prisma` — סכמת מסד הנתונים (SQLite).
+- `prisma/schema.prisma` — סכמת מסד הנתונים ל-SQLite (הרצה מקומית / אפליקציית Electron).
+- `prisma/schema.postgres.prisma` — אותה סכמה, ל-PostgreSQL (פריסה ב-Render בלבד — ראה "פרסום לאינטרנט" למטה).
 - `prisma/seed.mjs` — יוצר/מעדכן את חשבון הבעלים.
+- `render.yaml` — הגדרת הפריסה ל-Render (שני שירותים: Next.js + Socket.io).
+- `electron/main.js`, `scripts/*` — בניית אפליקציית Windows (.exe) עם Electron.
 
 ## פיצ'רים
 
@@ -58,6 +61,32 @@ npm run seed
 - **אבטחה**: סיסמאות מגובבות (bcrypt), session tokens חתומים (JWT), הגבלת קצב על התחברות/הרשמה, CAPTCHA מתמטי אנטי-בוט.
 - **PWA**: ניתן "להתקין" את האפליקציה מהדפדפן (למשל Chrome/Edge → "התקן אפליקציה") ולפתוח אותה כחלון עצמאי.
 
-## הערות לפני production אמיתי
+## פרסום לאינטרנט (חינם) — Render + Neon
 
-זהו יישום מקומי/self-hosted עם מסד SQLite ושרת socket יחיד — מתאים להרצה מקומית או שרת יחיד קטן. ל-production אמיתי בקנה מידה גדול כדאי לשקול: מסד PostgreSQL, שירות וידאו/סטרימינג ייעודי (כרגע ה-WebRTC הוא mesh ישיר host↔viewers, לא מתאים להמון צופים), ואחסון קבצים בענן במקום דיסק מקומי.
+האפליקציה צריכה שרת שרץ כל הזמן (לא אתר סטטי) בגלל שרת ה-Socket.io. Vercel לא מתאים כי הוא לא תומך בתהליך socket מתמיד. במקום זה: **Render** (מריץ את שני השרתים, נותן כתובת חינמית עם HTTPS) + **Neon** (מסד PostgreSQL חינמי, כדי שהנתונים לא יימחקו כשהשרת נטען מחדש — ל-SQLite המקומי אין דיסק קבוע ב-tier החינמי של Render).
+
+### שלב 1: מסד נתונים ב-Neon (חינם)
+
+1. הרשמה ב-[neon.tech](https://neon.tech) (אפשר עם GitHub).
+2. צור פרויקט חדש.
+3. העתק את ה-**Connection string** (מתחיל ב-`postgresql://...`) — זה יהיה `DATABASE_URL`.
+
+### שלב 2: פריסה ב-Render
+
+הריפו כולל כבר קובץ `render.yaml` שמגדיר את שני השירותים (Next.js + Socket.io).
+
+1. הרשמה ב-[render.com](https://render.com) (אפשר עם GitHub).
+2. **New** → **Blueprint** → חבר את ה-repo הזה מ-GitHub.
+3. Render יזהה את `render.yaml` ויציע ליצור שני שירותים (`megnivolim-web` ו-`megnivolim-socket`). אשר.
+4. הוא יבקש למלא כמה משתני סביבה (משותפים לשני השירותים):
+   - `DATABASE_URL` — ה-connection string מ-Neon (שלב 1).
+   - `JWT_SECRET` — מחרוזת אקראית וסודית (לא אותה שבשימוש מקומי — אפשר ליצור חדשה).
+   - `GROQ_API_KEY`, `OPENROUTER_API_KEY` — אותם מפתחות כמו ב-`.env` המקומי.
+   - `OWNER_USERNAME`, `OWNER_PASSWORD` — פרטי חשבון הבעלים לאתר הציבורי (מומלץ סיסמה חדשה, לא זו שבשימוש מקומי).
+5. לחץ **Apply** / **Deploy**. הפריסה הראשונה לוקחת כמה דקות.
+
+לאחר הפריסה, האתר יהיה זמין ב-`https://megnivolim-web.onrender.com` (או שם דומה, לפי מה ש-Render נותן).
+
+**מגבלת ה-tier החינמי:** השירותים "נרדמים" אחרי כ-15 דקות בלי תנועה, והבקשה הראשונה אחרי זה איטית יותר (~30 שניות) עד שהשרת מתעורר.
+
+**הערה על תמונות:** תמונות שמועלות לפוסטים נשמרות כרגע על הדיסק המקומי של השרת, שגם הוא לא קבוע ב-tier החינמי — כלומר תמונות עלולות להיעלם אחרי הפעלה מחדש (בניגוד לטקסט/פוסטים/משתמשים, ששמורים ב-Postgres ונשארים). פתרון לזה (למשל אחסון בענן כמו Cloudflare R2) לא כלול כרגע.
