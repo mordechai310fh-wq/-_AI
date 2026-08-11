@@ -52,6 +52,17 @@ export default function LiveRoomClient({
   const [sourceMode, setSourceMode] = useState<"camera" | "screen">("camera");
   const [screenShareError, setScreenShareError] = useState<string | null>(null);
 
+  // Host: viewers available to invite to speak, and guests currently on mic.
+  const [viewers, setViewers] = useState<{ socketId: string; username: string }[]>([]);
+  const [guests, setGuests] = useState<{ socketId: string; username: string }[]>([]);
+  const [showViewerList, setShowViewerList] = useState(false);
+
+  // Viewer: an incoming invite from the host, or this viewer's own speaking state.
+  const [speakInvite, setSpeakInvite] = useState<{ from: string } | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [activeSpeaker, setActiveSpeaker] = useState<string | null>(null);
+
   // The mic/camera stream (audio always comes from here). Video track sent
   // to viewers can be either this stream's camera track, or a screen-share
   // track - swapped in-place with replaceTrack() so peer connections don't
@@ -64,6 +75,20 @@ export default function LiveRoomClient({
   const viewerPcRef = useRef<RTCPeerConnection | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
+  // Host: audio mixer so a connected guest's mic and the host's own mic both
+  // reach every viewer over the existing peer connections (no renegotiation
+  // needed - just swap in the mixed track with replaceTrack).
+  const guestPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const guestAudioSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map());
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const mixedAudioTrackRef = useRef<MediaStreamTrack | null>(null);
+
+  // Viewer (as guest): the mic-only connection back to the host.
+  const guestPcRef = useRef<RTCPeerConnection | null>(null);
+  const guestStreamRef = useRef<MediaStream | null>(null);
+  const hostSocketIdRef = useRef<string | null>(null);
+
   const cleanupPeers = useCallback(() => {
     peersRef.current.forEach((pc) => pc.close());
     peersRef.current.clear();
@@ -71,11 +96,46 @@ export default function LiveRoomClient({
       viewerPcRef.current.close();
       viewerPcRef.current = null;
     }
+    guestPeersRef.current.forEach((pc) => pc.close());
+    guestPeersRef.current.clear();
+    guestAudioSourcesRef.current.clear();
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    audioDestRef.current = null;
+    mixedAudioTrackRef.current = null;
+    guestPcRef.current?.close();
+    guestPcRef.current = null;
+    guestStreamRef.current?.getTracks().forEach((t) => t.stop());
+    guestStreamRef.current = null;
     cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     cameraStreamRef.current = null;
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     currentVideoTrackRef.current = null;
+  }, []);
+
+  // Host: lazily builds (once) an audio graph mixing the host's own mic with
+  // any connected guests' mics, and swaps the mixed track into every current
+  // viewer connection. Later guest audio just connects into the same graph.
+  const ensureAudioMixer = useCallback(() => {
+    if (audioDestRef.current) return audioDestRef.current;
+    const ctx = audioCtxRef.current ?? new AudioContext();
+    audioCtxRef.current = ctx;
+    const dest = ctx.createMediaStreamDestination();
+    const micTrack = cameraStreamRef.current?.getAudioTracks()[0];
+    if (micTrack) {
+      ctx.createMediaStreamSource(new MediaStream([micTrack])).connect(dest);
+    }
+    audioDestRef.current = dest;
+    const mixedTrack = dest.stream.getAudioTracks()[0] ?? null;
+    mixedAudioTrackRef.current = mixedTrack;
+    if (mixedTrack) {
+      peersRef.current.forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "audio");
+        sender?.replaceTrack(mixedTrack).catch(() => {});
+      });
+    }
+    return dest;
   }, []);
 
   // Host: join the room as soon as we're connected (chat/reactions/viewer-count
@@ -122,16 +182,33 @@ export default function LiveRoomClient({
     };
   }, [isHost, connected, ended, isRtmp]);
 
+  // Host: closes a connected guest's mic connection and takes them out of the
+  // audio mix. Used both when the host removes a guest and when a guest
+  // leaves/disconnects on their own.
+  const removeGuest = useCallback((guestId: string) => {
+    guestPeersRef.current.get(guestId)?.close();
+    guestPeersRef.current.delete(guestId);
+    guestAudioSourcesRef.current.get(guestId)?.disconnect();
+    guestAudioSourcesRef.current.delete(guestId);
+    setGuests((g) => {
+      const removed = g.find((x) => x.socketId === guestId);
+      if (removed) socket?.emit("speaker-status", { roomId, username: removed.username, active: false });
+      return g.filter((x) => x.socketId !== guestId);
+    });
+  }, [socket, roomId]);
+
   // Host: handle signaling with each viewer (WebRTC mode only)
   useEffect(() => {
     if (!isHost || !socket || isRtmp) return;
 
-    const onViewerJoined = async ({ socketId }: { socketId: string }) => {
+    const onViewerJoined = async ({ socketId, username }: { socketId: string; username: string }) => {
+      setViewers((v) => (v.some((x) => x.socketId === socketId) ? v : [...v, { socketId, username }]));
+
       const camStream = cameraStreamRef.current;
       if (!camStream) return;
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-      const audioTrack = camStream.getAudioTracks()[0];
+      const audioTrack = mixedAudioTrackRef.current ?? camStream.getAudioTracks()[0];
       if (audioTrack) pc.addTrack(audioTrack, camStream);
       const videoTrack = currentVideoTrackRef.current;
       if (videoTrack) pc.addTrack(videoTrack, camStream);
@@ -161,15 +238,55 @@ export default function LiveRoomClient({
     const onViewerLeft = ({ socketId }: { socketId: string }) => {
       peersRef.current.get(socketId)?.close();
       peersRef.current.delete(socketId);
+      setViewers((v) => v.filter((x) => x.socketId !== socketId));
+      removeGuest(socketId);
     };
 
     const onViewerCount = ({ count }: { count: number }) => setViewerCount(count);
+
+    // Guest (co-host) signaling: a viewer who accepted an invite opens a
+    // second, mic-only connection here.
+    const onGuestOffer = async ({ from, sdp }: { from: string; sdp: RTCSessionDescriptionInit }) => {
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      guestPeersRef.current.set(from, pc);
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) socket.emit("guest-ice-candidate", { to: from, candidate: e.candidate });
+      };
+      pc.ontrack = (e) => {
+        const dest = ensureAudioMixer();
+        const source = audioCtxRef.current!.createMediaStreamSource(e.streams[0]);
+        source.connect(dest);
+        guestAudioSourcesRef.current.set(from, source);
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("guest-answer", { to: from, sdp: answer });
+
+      setGuests((g) => {
+        if (g.some((x) => x.socketId === from)) return g;
+        const username = viewers.find((v) => v.socketId === from)?.username ?? "אורח";
+        socket.emit("speaker-status", { roomId, username, active: true });
+        return [...g, { socketId: from, username }];
+      });
+    };
+
+    const onGuestIceCandidate = async ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
+      await guestPeersRef.current.get(from)?.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+    };
+
+    const onGuestLeft = ({ from }: { from: string }) => removeGuest(from);
 
     socket.on("viewer-joined", onViewerJoined);
     socket.on("webrtc-answer", onAnswer);
     socket.on("webrtc-ice-candidate", onIceCandidate);
     socket.on("viewer-left", onViewerLeft);
     socket.on("viewer-count", onViewerCount);
+    socket.on("guest-offer", onGuestOffer);
+    socket.on("guest-ice-candidate", onGuestIceCandidate);
+    socket.on("guest-left", onGuestLeft);
 
     return () => {
       socket.off("viewer-joined", onViewerJoined);
@@ -177,8 +294,12 @@ export default function LiveRoomClient({
       socket.off("webrtc-ice-candidate", onIceCandidate);
       socket.off("viewer-left", onViewerLeft);
       socket.off("viewer-count", onViewerCount);
+      socket.off("guest-offer", onGuestOffer);
+      socket.off("guest-ice-candidate", onGuestIceCandidate);
+      socket.off("guest-left", onGuestLeft);
     };
-  }, [isHost, socket, isRtmp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, socket, isRtmp, removeGuest, ensureAudioMixer, roomId]);
 
   // Viewer: join room for chat/reactions/viewer-count in every mode; the
   // WebRTC offer/answer dance below only applies to WebRTC-mode broadcasts.
@@ -205,6 +326,7 @@ export default function LiveRoomClient({
 
     const onOffer = async ({ from, sdp }: { from: string; sdp: RTCSessionDescriptionInit }) => {
       hostSocketId = from;
+      hostSocketIdRef.current = from;
       await pc.setRemoteDescription(new RTCSessionDescription(sdp));
       for (const c of pendingCandidatesRef.current) {
         await pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
@@ -227,16 +349,50 @@ export default function LiveRoomClient({
     const onViewerCount = ({ count }: { count: number }) => setViewerCount(count);
     const onLiveEnded = () => setEnded(true);
 
+    // Guest (co-host) flow: an invite from the host, and the host answering
+    // back once we've offered our mic.
+    const onSpeakInvite = ({ from }: { from: string }) => setSpeakInvite({ from });
+
+    const onGuestAnswer = async ({ sdp }: { sdp: RTCSessionDescriptionInit }) => {
+      await guestPcRef.current?.setRemoteDescription(new RTCSessionDescription(sdp));
+    };
+
+    const onGuestIceCandidate = async ({ candidate }: { candidate: RTCIceCandidateInit }) => {
+      await guestPcRef.current?.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+    };
+
+    const onGuestKicked = () => {
+      guestPcRef.current?.close();
+      guestPcRef.current = null;
+      guestStreamRef.current?.getTracks().forEach((t) => t.stop());
+      guestStreamRef.current = null;
+      setIsSpeaking(false);
+    };
+
+    const onSpeakerStatus = ({ username, active }: { username: string; active: boolean }) => {
+      setActiveSpeaker(active ? username : null);
+    };
+
     socket.on("webrtc-offer", onOffer);
     socket.on("webrtc-ice-candidate", onIceCandidate);
     socket.on("viewer-count", onViewerCount);
     socket.on("live-ended", onLiveEnded);
+    socket.on("speak-invite", onSpeakInvite);
+    socket.on("guest-answer", onGuestAnswer);
+    socket.on("guest-ice-candidate", onGuestIceCandidate);
+    socket.on("guest-kicked", onGuestKicked);
+    socket.on("speaker-status", onSpeakerStatus);
 
     return () => {
       socket.off("webrtc-offer", onOffer);
       socket.off("webrtc-ice-candidate", onIceCandidate);
       socket.off("viewer-count", onViewerCount);
       socket.off("live-ended", onLiveEnded);
+      socket.off("speak-invite", onSpeakInvite);
+      socket.off("guest-answer", onGuestAnswer);
+      socket.off("guest-ice-candidate", onGuestIceCandidate);
+      socket.off("guest-kicked", onGuestKicked);
+      socket.off("speaker-status", onSpeakerStatus);
       pc.close();
       viewerPcRef.current = null;
     };
@@ -323,6 +479,58 @@ export default function LiveRoomClient({
   function toggleScreenShare() {
     if (sourceMode === "screen") revertToCamera();
     else shareScreen();
+  }
+
+  // Host: invite a specific viewer to speak (co-host mic).
+  function inviteToSpeak(viewerId: string) {
+    socket?.emit("invite-speak", { to: viewerId });
+  }
+
+  // Viewer: accept an invite - grab the mic and open a second, audio-only
+  // connection to the host carrying just that track.
+  async function acceptSpeak() {
+    if (!speakInvite || !socket) return;
+    const hostId = speakInvite.from;
+    setSpeakInvite(null);
+    socket.emit("speak-response", { to: hostId, accepted: true });
+
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      guestStreamRef.current = micStream;
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      guestPcRef.current = pc;
+      micStream.getTracks().forEach((t) => pc.addTrack(t, micStream));
+      pc.onicecandidate = (e) => {
+        if (e.candidate) socket.emit("guest-ice-candidate", { to: hostId, candidate: e.candidate });
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit("guest-offer", { to: hostId, sdp: offer });
+      setIsSpeaking(true);
+    } catch {
+      setMicError("לא ניתן לגשת למיקרופון. אפשר גישה ונסה שוב.");
+    }
+  }
+
+  function declineSpeak() {
+    if (!speakInvite || !socket) return;
+    socket.emit("speak-response", { to: speakInvite.from, accepted: false });
+    setSpeakInvite(null);
+  }
+
+  function leaveSpeak() {
+    guestPcRef.current?.close();
+    guestPcRef.current = null;
+    guestStreamRef.current?.getTracks().forEach((t) => t.stop());
+    guestStreamRef.current = null;
+    setIsSpeaking(false);
+    if (hostSocketIdRef.current) socket?.emit("guest-left", { to: hostSocketIdRef.current });
+  }
+
+  // Host: removes a guest and tells their client to hang up too.
+  function kickGuest(guestId: string) {
+    removeGuest(guestId);
+    socket?.emit("guest-kicked", { to: guestId });
   }
 
   // Keeps the stream floating on top of everything else (other apps, a
@@ -456,11 +664,106 @@ export default function LiveRoomClient({
                 🗔 חלון צף
               </button>
             )}
+            {isHost && !isRtmp && (
+              <button
+                onClick={() => setShowViewerList((v) => !v)}
+                className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white hover:bg-black/60"
+              >
+                🎙️ הזמן לדבר
+              </button>
+            )}
             <div className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white">
               👁️ {viewerCount}
             </div>
           </div>
         </div>
+
+        {isHost && !isRtmp && showViewerList && (
+          <div className="absolute left-4 top-16 z-10 max-h-72 w-64 overflow-y-auto rounded-xl border border-white/10 bg-black/80 p-3 text-white backdrop-blur">
+            {guests.length > 0 && (
+              <>
+                <p className="mb-1 text-xs font-semibold text-white/60">מדברים עכשיו</p>
+                {guests.map((g) => (
+                  <div key={g.socketId} className="mb-2 flex items-center justify-between gap-2 text-sm">
+                    <span>🎙️ {g.username}</span>
+                    <button
+                      onClick={() => kickGuest(g.socketId)}
+                      className="rounded-full bg-accent/80 px-2 py-1 text-xs"
+                    >
+                      הסר
+                    </button>
+                  </div>
+                ))}
+                <div className="my-2 border-t border-white/10" />
+              </>
+            )}
+            <p className="mb-1 text-xs font-semibold text-white/60">צופים</p>
+            {viewers.length === 0 && <p className="text-xs text-white/50">אין עדיין צופים</p>}
+            {viewers
+              .filter((v) => !guests.some((g) => g.socketId === v.socketId))
+              .map((v) => (
+                <div key={v.socketId} className="mb-2 flex items-center justify-between gap-2 text-sm">
+                  <span>{v.username}</span>
+                  <button
+                    onClick={() => inviteToSpeak(v.socketId)}
+                    className="rounded-full bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
+                  >
+                    הזמן לדבר
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
+
+        {!isHost && activeSpeaker && (
+          <div className="absolute right-4 top-16 rounded-full bg-black/50 px-3 py-1.5 text-xs text-white">
+            🎙️ {activeSpeaker} מדבר/ת
+          </div>
+        )}
+
+        {!isHost && speakInvite && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-6">
+            <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-card p-5 text-center">
+              <p className="mb-4 text-sm font-semibold">
+                {hostUsername} הזמין אותך לדבר בלייב! להצטרף?
+              </p>
+              <div className="flex justify-center gap-3">
+                <button
+                  onClick={acceptSpeak}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white"
+                >
+                  🎙️ להצטרף
+                </button>
+                <button
+                  onClick={declineSpeak}
+                  className="rounded-lg bg-black/10 px-4 py-2 text-sm font-semibold"
+                >
+                  לא תודה
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!isHost && isSpeaking && (
+          <div className="absolute bottom-24 right-4 flex flex-col items-end gap-2 md:bottom-4">
+            <span className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white">
+              🎙️ אתה מדבר עכשיו
+            </span>
+            <button
+              onClick={leaveSpeak}
+              className="rounded-full bg-black/50 px-3 py-1.5 text-xs text-white hover:bg-black/70"
+            >
+              עזוב את השיחה
+            </button>
+          </div>
+        )}
+
+        {!isHost && micError && (
+          <p className="absolute bottom-24 right-4 max-w-xs rounded-lg bg-black/70 px-3 py-1.5 text-xs text-accent md:bottom-4">
+            {micError}
+          </p>
+        )}
 
         <div className="absolute bottom-24 left-4 flex flex-col gap-3 md:hidden">
           <button

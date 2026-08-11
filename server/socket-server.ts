@@ -179,6 +179,51 @@ io.on("connection", (socket: Socket) => {
     io.to(to).emit("webrtc-ice-candidate", { from: socket.id, candidate });
   });
 
+  // Co-host / "join the live and talk" flow: the host invites a specific
+  // viewer to speak, and if they accept, the viewer opens a second, separate
+  // WebRTC connection to the host carrying just their mic audio. The host
+  // mixes that into what everyone else receives (see LiveRoomClient). This
+  // server only relays the signaling messages - it has no idea about audio.
+  socket.on("invite-speak", ({ to }: { to: string }) => {
+    if (!to) return;
+    io.to(to).emit("speak-invite", { from: socket.id });
+  });
+
+  socket.on("speak-response", ({ to, accepted }: { to: string; accepted: boolean }) => {
+    if (!to) return;
+    io.to(to).emit("speak-response", { from: socket.id, accepted });
+  });
+
+  socket.on("guest-offer", ({ to, sdp }: { to: string; sdp: unknown }) => {
+    if (!to) return;
+    io.to(to).emit("guest-offer", { from: socket.id, sdp });
+  });
+
+  socket.on("guest-answer", ({ to, sdp }: { to: string; sdp: unknown }) => {
+    if (!to) return;
+    io.to(to).emit("guest-answer", { from: socket.id, sdp });
+  });
+
+  socket.on("guest-ice-candidate", ({ to, candidate }: { to: string; candidate: unknown }) => {
+    if (!to) return;
+    io.to(to).emit("guest-ice-candidate", { from: socket.id, candidate });
+  });
+
+  socket.on("guest-left", ({ to }: { to: string }) => {
+    if (!to) return;
+    io.to(to).emit("guest-left", { from: socket.id });
+  });
+
+  socket.on("guest-kicked", ({ to }: { to: string }) => {
+    if (!to) return;
+    io.to(to).emit("guest-kicked");
+  });
+
+  socket.on("speaker-status", ({ roomId, username, active }: { roomId: string; username: string; active: boolean }) => {
+    if (!roomId) return;
+    socket.to(roomId).emit("speaker-status", { username, active });
+  });
+
   socket.on("end-live", async ({ roomId }: { roomId: string }, ack?: () => void) => {
     if (roomId && hostSocketByRoom.get(roomId) === socket.id) {
       await endLive(roomId);
