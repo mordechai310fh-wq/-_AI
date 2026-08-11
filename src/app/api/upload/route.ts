@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { getCurrentUser, isBanned } from "@/lib/auth";
+import { cloudinaryConfigured, getCloudinary } from "@/lib/cloudinary";
 
 type MediaKind = "image" | "video" | "audio";
 
@@ -47,11 +48,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `הקובץ גדול מדי (מקסימום ${maxMb}MB)` }, { status: 400 });
   }
 
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Cloudinary when configured - persists across restarts/redeploys, which
+  // local disk on Render's free tier does not. Falls back to local disk for
+  // local dev and the Electron app, where the disk sticks around.
+  if (cloudinaryConfigured()) {
+    const dataUri = `data:${file.type};base64,${buffer.toString("base64")}`;
+    const uploaded = await getCloudinary().uploader.upload(dataUri, {
+      resource_type: "auto",
+      folder: "megnivolim",
+    });
+    return NextResponse.json({ url: uploaded.secure_url, kind: meta.kind });
+  }
+
   const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "public", "uploads");
   await mkdir(/* turbopackIgnore: true */ uploadsDir, { recursive: true });
 
   const filename = `${randomUUID()}.${meta.ext}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(path.join(/* turbopackIgnore: true */ uploadsDir, filename), buffer);
 
   // Served through our own route (not /uploads/*) so it works the same way

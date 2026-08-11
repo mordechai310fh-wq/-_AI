@@ -26,6 +26,15 @@ services:
         sync: false
       - key: OWNER_PASSWORD
         sync: false
+      # Cloudinary - stores uploaded images/videos permanently. Without this,
+      # uploads go to local disk, which Render's free plan wipes on every
+      # restart/redeploy. Get these three from your Cloudinary dashboard.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   # Socket.io server - live chat, message likes, reactions, WebRTC signaling.
   - type: web
