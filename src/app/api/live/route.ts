@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
@@ -19,6 +20,7 @@ export async function GET() {
 
 const schema = z.object({
   title: z.string().trim().min(1, "תן שם ללייב").max(100, "השם ארוך מדי"),
+  broadcastMode: z.enum(["webrtc", "rtmp"]).default("webrtc"),
 });
 
 export async function POST(req: NextRequest) {
@@ -39,7 +41,13 @@ export async function POST(req: NextRequest) {
   }
 
   const room = await prisma.liveRoom.create({
-    data: { hostId: user.id, title: parsed.data.title, status: "LIVE" },
+    data: {
+      hostId: user.id,
+      title: parsed.data.title,
+      status: "LIVE",
+      broadcastMode: parsed.data.broadcastMode,
+      streamKey: parsed.data.broadcastMode === "rtmp" ? randomBytes(16).toString("hex") : null,
+    },
   });
 
   return NextResponse.json({ item: room });

@@ -28,6 +28,8 @@ export default async function LiveRoomPage({
       currentUserId={user.id}
       currentUsername={user.username}
       alreadyEnded={room.status !== "LIVE"}
+      broadcastMode={room.broadcastMode === "rtmp" ? "rtmp" : "webrtc"}
+      streamKey={room.hostId === user.id ? room.streamKey ?? undefined : undefined}
     />
   );
 }

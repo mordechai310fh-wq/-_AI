@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSocket } from "@/lib/useSocket";
 import LiveChat from "@/components/LiveChat";
 import FloatingHearts, { type FloatingHeartsHandle } from "@/components/FloatingHearts";
+import FlvPlayer from "@/components/FlvPlayer";
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
@@ -16,7 +17,16 @@ type Props = {
   currentUserId: string;
   currentUsername: string;
   alreadyEnded: boolean;
+  broadcastMode: "webrtc" | "rtmp";
+  streamKey?: string;
 };
+
+function getRtmpServerUrl() {
+  if (typeof window === "undefined") return "rtmp://localhost:1935/live";
+  const envUrl = process.env.NEXT_PUBLIC_RTMP_URL;
+  if (envUrl && !envUrl.includes("localhost")) return envUrl;
+  return `rtmp://${window.location.hostname}:1935/live`;
+}
 
 export default function LiveRoomClient({
   roomId,
@@ -25,9 +35,12 @@ export default function LiveRoomClient({
   hostUsername,
   currentUserId,
   alreadyEnded,
+  broadcastMode,
+  streamKey,
 }: Props) {
   const router = useRouter();
   const { socket, connected } = useSocket();
+  const isRtmp = broadcastMode === "rtmp";
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const heartsRef = useRef<FloatingHeartsHandle>(null);
@@ -74,8 +87,9 @@ export default function LiveRoomClient({
 
   // Host: separately try to get camera/mic for broadcasting video. If this
   // fails, the host still has chat/reactions, just no outgoing video.
+  // Not used in RTMP mode - the video comes from OBS/streaming software instead.
   useEffect(() => {
-    if (!isHost || !connected || ended) return;
+    if (!isHost || !connected || ended || isRtmp) return;
 
     let cancelled = false;
 
@@ -89,8 +103,16 @@ export default function LiveRoomClient({
         cameraStreamRef.current = stream;
         currentVideoTrackRef.current = stream.getVideoTracks()[0] ?? null;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      } catch {
-        setMediaError("לא ניתן לגשת למצלמה/מיקרופון. הצ'אט עדיין פעיל, אך לא תהיה שידור וידאו.");
+      } catch (err) {
+        const name = err instanceof Error ? err.name : "";
+        const reasons: Record<string, string> = {
+          NotAllowedError: "הגישה נחסמה. לחץ על סמל 🔒 ליד כתובת האתר ← מצלמה/מיקרופון ← אפשר, ורענן את הדף.",
+          NotFoundError: "לא נמצאה מצלמה או מיקרופון במכשיר הזה.",
+          NotReadableError: "המצלמה/מיקרופון בשימוש על ידי אפליקציה אחרת. סגור אותה ונסה שוב.",
+          OverconstrainedError: "לא נמצאה מצלמה שתומכת בהגדרות המבוקשות.",
+        };
+        const reason = reasons[name] ?? "לא ניתן לגשת למצלמה/מיקרופון.";
+        setMediaError(`${reason} הצ'אט עדיין פעיל, אך לא תהיה שידור וידאו.`);
       }
     }
     start();
@@ -98,11 +120,11 @@ export default function LiveRoomClient({
     return () => {
       cancelled = true;
     };
-  }, [isHost, connected, ended]);
+  }, [isHost, connected, ended, isRtmp]);
 
-  // Host: handle signaling with each viewer
+  // Host: handle signaling with each viewer (WebRTC mode only)
   useEffect(() => {
-    if (!isHost || !socket) return;
+    if (!isHost || !socket || isRtmp) return;
 
     const onViewerJoined = async ({ socketId }: { socketId: string }) => {
       const camStream = cameraStreamRef.current;
@@ -156,11 +178,12 @@ export default function LiveRoomClient({
       socket.off("viewer-left", onViewerLeft);
       socket.off("viewer-count", onViewerCount);
     };
-  }, [isHost, socket]);
+  }, [isHost, socket, isRtmp]);
 
-  // Viewer: join room and handle host's offer
+  // Viewer: join room for chat/reactions/viewer-count in every mode; the
+  // WebRTC offer/answer dance below only applies to WebRTC-mode broadcasts.
   useEffect(() => {
-    if (isHost || !socket || !connected || ended) return;
+    if (isHost || !socket || !connected || ended || isRtmp) return;
 
     socket.emit("join-room", { roomId, asHost: false });
 
@@ -228,6 +251,18 @@ export default function LiveRoomClient({
       socket.off("live-ended", onLiveEnded);
     };
   }, [socket]);
+
+  // Viewer in RTMP mode: still join the room for chat/reactions/viewer-count,
+  // but skip the WebRTC signaling entirely - video comes from the HLS player.
+  useEffect(() => {
+    if (isHost || !socket || !connected || ended || !isRtmp) return;
+    socket.emit("join-room", { roomId, asHost: false });
+    const onViewerCount = ({ count }: { count: number }) => setViewerCount(count);
+    socket.on("viewer-count", onViewerCount);
+    return () => {
+      socket.off("viewer-count", onViewerCount);
+    };
+  }, [isHost, socket, connected, ended, isRtmp, roomId]);
 
   useEffect(() => cleanupPeers, [cleanupPeers]);
 
@@ -349,7 +384,42 @@ export default function LiveRoomClient({
   return (
     <div className="relative flex h-[calc(100dvh-64px)] w-full flex-col bg-black md:flex-row">
       <div className="relative flex-1 overflow-hidden">
-        {isHost ? (
+        {isRtmp ? (
+          isHost ? (
+            <div className="flex h-full w-full items-center justify-center bg-black p-6">
+              <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-5 text-white">
+                <p className="mb-3 text-lg font-semibold">🎬 שידור מ-OBS / תוכנת סטרימינג</p>
+                <p className="mb-4 text-sm text-white/70">
+                  פתח את OBS (או כל תוכנת שידור אחרת שתומכת ב-RTMP) והזן את הפרטים הבאים,
+                  ואז לחץ &quot;Start Streaming&quot;.
+                </p>
+                <label className="mb-1 block text-xs text-white/60">כתובת שרת (Server)</label>
+                <input
+                  readOnly
+                  value={getRtmpServerUrl()}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="mb-3 w-full rounded-lg border border-white/20 bg-black/40 px-3 py-2 text-sm"
+                />
+                <label className="mb-1 block text-xs text-white/60">מפתח שידור (Stream Key)</label>
+                <input
+                  readOnly
+                  value={streamKey ?? ""}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="w-full rounded-lg border border-white/20 bg-black/40 px-3 py-2 text-sm"
+                />
+                <p className="mt-3 text-xs text-accent">
+                  אל תשתף את מפתח השידור עם אף אחד - מי שמחזיק בו יכול לשדר בשמך.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <FlvPlayer
+              src={`/api/live/${roomId}/flv`}
+              className="h-full w-full object-cover"
+              onPlaying={() => setHasRemoteStream(true)}
+            />
+          )
+        ) : isHost ? (
           <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
         ) : (
           <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
@@ -377,13 +447,15 @@ export default function LiveRoomClient({
             {sourceMode === "screen" && <span className="text-sm text-accent-2">🖥️ מסך</span>}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={togglePiP}
-              title="חלון צף (Picture-in-Picture)"
-              className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white hover:bg-black/60"
-            >
-              🗔 חלון צף
-            </button>
+            {!isRtmp && (
+              <button
+                onClick={togglePiP}
+                title="חלון צף (Picture-in-Picture)"
+                className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white hover:bg-black/60"
+              >
+                🗔 חלון צף
+              </button>
+            )}
             <div className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white">
               👁️ {viewerCount}
             </div>
@@ -413,12 +485,14 @@ export default function LiveRoomClient({
               >
                 סיים לייב
               </button>
-              <button
-                onClick={toggleScreenShare}
-                className="rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white hover:bg-black/70"
-              >
-                {sourceMode === "screen" ? "📷 חזרה למצלמה" : "🖥️ שתף מסך"}
-              </button>
+              {!isRtmp && (
+                <button
+                  onClick={toggleScreenShare}
+                  className="rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white hover:bg-black/70"
+                >
+                  {sourceMode === "screen" ? "📷 חזרה למצלמה" : "🖥️ שתף מסך"}
+                </button>
+              )}
             </div>
           </div>
         )}

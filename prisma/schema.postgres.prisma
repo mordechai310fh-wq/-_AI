@@ -69,13 +69,15 @@ model Comment {
 }
 
 model LiveRoom {
-  id        String    @id @default(cuid())
-  hostId    String
-  host      User      @relation(fields: [hostId], references: [id], onDelete: Cascade)
-  title     String
-  status    String    @default("LIVE")
-  createdAt DateTime  @default(now())
-  endedAt   DateTime?
+  id            String    @id @default(cuid())
+  hostId        String
+  host          User      @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  title         String
+  status        String    @default("LIVE")
+  broadcastMode String    @default("webrtc")
+  streamKey     String?   @unique
+  createdAt     DateTime  @default(now())
+  endedAt       DateTime?
 
   messages  LiveChatMessage[]
 }

@@ -27,6 +27,9 @@ io.use(async (socket, next) => {
 
 // roomId -> host socket id
 const hostSocketByRoom = new Map<string, string>();
+// roomId -> broadcastMode, so disconnect handling can skip the auto-end
+// grace period for RTMP rooms (the broadcast lives in OBS, not the tab).
+const roomBroadcastMode = new Map<string, string>();
 // roomId -> set of viewer socket ids
 const viewersByRoom = new Map<string, Set<string>>();
 // roomId -> pending "end live" timer, so a brief disconnect/refresh doesn't
@@ -70,6 +73,7 @@ function removeViewer(roomId: string, socketId: string) {
 async function endLive(roomId: string) {
   cancelPendingEnd(roomId);
   hostSocketByRoom.delete(roomId);
+  roomBroadcastMode.delete(roomId);
   viewersByRoom.delete(roomId);
   try {
     await prisma.liveRoom.updateMany({
@@ -97,6 +101,7 @@ io.on("connection", (socket: Socket) => {
       if (!room.host.isOwner && !room.host.hasAccess) return;
       cancelPendingEnd(roomId);
       hostSocketByRoom.set(roomId, socket.id);
+      roomBroadcastMode.set(roomId, room.broadcastMode);
       socket.join(roomId);
       socket.data.hostOfRoom = roomId;
       socket.emit("viewer-count", { roomId, count: viewerCount(roomId) });
@@ -188,7 +193,13 @@ io.on("connection", (socket: Socket) => {
     const viewerOfRoom = socket.data.viewerOfRoom as string | undefined;
 
     if (hostOfRoom && hostSocketByRoom.get(hostOfRoom) === socket.id) {
-      scheduleEndLive(hostOfRoom, socket.id);
+      // RTMP broadcasts keep going in OBS regardless of this tab - only the
+      // RTMP server's donePublish event (or an explicit "End Live" click)
+      // should end those. WebRTC broadcasts live in the tab, so a lost
+      // connection there does mean the stream is actually gone.
+      if (roomBroadcastMode.get(hostOfRoom) !== "rtmp") {
+        scheduleEndLive(hostOfRoom, socket.id);
+      }
     }
     if (viewerOfRoom) {
       removeViewer(viewerOfRoom, socket.id);

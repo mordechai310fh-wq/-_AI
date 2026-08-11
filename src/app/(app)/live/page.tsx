@@ -18,6 +18,7 @@ export default function LivePage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
+  const [broadcastMode, setBroadcastMode] = useState<"webrtc" | "rtmp">("webrtc");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +49,7 @@ export default function LivePage() {
       const res = await fetch("/api/live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, broadcastMode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה");
@@ -64,21 +65,43 @@ export default function LivePage() {
       {userLoading ? null : hasFullAccess ? (
         <form
           onSubmit={goLive}
-          className="mb-6 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center"
+          className="mb-6 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4"
         >
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="על מה הלייב שלך?"
-            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-          />
-          <button
-            type="submit"
-            disabled={starting}
-            className="whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            🔴 {starting ? "מתחיל..." : "התחל לייב"}
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="על מה הלייב שלך?"
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <button
+              type="submit"
+              disabled={starting}
+              className="whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              🔴 {starting ? "מתחיל..." : "התחל לייב"}
+            </button>
+          </div>
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setBroadcastMode("webrtc")}
+              className={`rounded-lg border px-3 py-1.5 font-semibold transition ${
+                broadcastMode === "webrtc" ? "border-accent bg-accent/10 text-accent" : "border-border text-muted"
+              }`}
+            >
+              📷 מצלמה מהדפדפן
+            </button>
+            <button
+              type="button"
+              onClick={() => setBroadcastMode("rtmp")}
+              className={`rounded-lg border px-3 py-1.5 font-semibold transition ${
+                broadcastMode === "rtmp" ? "border-accent bg-accent/10 text-accent" : "border-border text-muted"
+              }`}
+            >
+              🎬 OBS / תוכנת שידור
+            </button>
+          </div>
         </form>
       ) : (
         <div className="mb-6">
