@@ -3,25 +3,43 @@
 import { useRef, useState } from "react";
 import type { PostItem } from "@/lib/types";
 
+type MediaKind = "image" | "video" | null;
+
 export default function CreatePostModal({ onCreated }: { onCreated: (post: PostItem) => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaKind, setMediaKind] = useState<MediaKind>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   function reset() {
     setText("");
-    setFile(null);
+    setMediaFile(null);
+    setMediaKind(null);
     setPreview(null);
+    setAudioFile(null);
     setError(null);
   }
 
-  function handleFile(f: File | null) {
-    setFile(f);
+  function handleMedia(f: File | null, kind: MediaKind) {
+    setMediaFile(f);
+    setMediaKind(kind);
     setPreview(f ? URL.createObjectURL(f) : null);
+  }
+
+  async function uploadFile(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "שגיאה בהעלאה");
+    return data.url;
   }
 
   async function submit(e: React.FormEvent) {
@@ -34,19 +52,17 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
     setError(null);
     try {
       let imageUrl: string | null = null;
-      if (file) {
-        const fd = new FormData();
-        fd.append("file", file);
-        const upRes = await fetch("/api/upload", { method: "POST", body: fd });
-        const upData = await upRes.json();
-        if (!upRes.ok) throw new Error(upData.error ?? "שגיאה בהעלאת תמונה");
-        imageUrl = upData.url;
-      }
+      let videoUrl: string | null = null;
+      let audioUrl: string | null = null;
+
+      if (mediaFile && mediaKind === "image") imageUrl = await uploadFile(mediaFile);
+      if (mediaFile && mediaKind === "video") videoUrl = await uploadFile(mediaFile);
+      if (audioFile) audioUrl = await uploadFile(audioFile);
 
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, imageUrl }),
+        body: JSON.stringify({ text, imageUrl, videoUrl, audioUrl }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה בפרסום");
@@ -65,7 +81,7 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-2xl text-white shadow-lg transition hover:opacity-90"
+        className="fixed bottom-20 left-1/2 z-40 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-accent text-2xl text-white shadow-lg transition hover:opacity-90 md:bottom-6"
         title="פוסט חדש"
       >
         +
@@ -79,7 +95,7 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={submit}
-            className="flex w-full max-w-md flex-col gap-3 rounded-2xl border border-border bg-card p-5"
+            className="flex max-h-[90vh] w-full max-w-md flex-col gap-3 overflow-y-auto rounded-2xl border border-border bg-card p-5"
           >
             <h2 className="text-lg font-semibold">פוסט חדש</h2>
             <textarea
@@ -90,36 +106,84 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
               className="resize-none rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-accent"
             />
 
-            {preview && (
+            {preview && mediaKind === "image" && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={preview} alt="תצוגה מקדימה" className="max-h-56 w-full rounded-lg object-cover" />
             )}
+            {preview && mediaKind === "video" && (
+              <video src={preview} controls className="max-h-56 w-full rounded-lg object-cover" />
+            )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => imageInputRef.current?.click()}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground"
               >
-                🖼️ הוסף תמונה
+                🖼️ תמונה
               </button>
-              {file && (
+              <button
+                type="button"
+                onClick={() => videoInputRef.current?.click()}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground"
+              >
+                🎬 וידאו
+              </button>
+              {mediaFile && (
                 <button
                   type="button"
-                  onClick={() => handleFile(null)}
+                  onClick={() => handleMedia(null, null)}
                   className="text-sm text-muted hover:text-foreground"
                 >
-                  הסר
+                  הסר מדיה
                 </button>
               )}
               <input
-                ref={fileInputRef}
+                ref={imageInputRef}
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
-                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => handleMedia(e.target.files?.[0] ?? null, "image")}
+              />
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                className="hidden"
+                onChange={(e) => handleMedia(e.target.files?.[0] ?? null, "video")}
               />
             </div>
+
+            {mediaKind !== "video" && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => audioInputRef.current?.click()}
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground"
+                >
+                  🎵 הוסף סאונד
+                </button>
+                {audioFile && (
+                  <>
+                    <span className="text-xs text-muted">{audioFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAudioFile(null)}
+                      className="text-sm text-muted hover:text-foreground"
+                    >
+                      הסר
+                    </button>
+                  </>
+                )}
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg"
+                  className="hidden"
+                  onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+            )}
 
             {error && <p className="text-sm text-accent">{error}</p>}
 

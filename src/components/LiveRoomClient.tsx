@@ -36,8 +36,17 @@ export default function LiveRoomClient({
   const [ended, setEnded] = useState(alreadyEnded);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  const [sourceMode, setSourceMode] = useState<"camera" | "screen">("camera");
+  const [screenShareError, setScreenShareError] = useState<string | null>(null);
 
-  const localStreamRef = useRef<MediaStream | null>(null);
+  // The mic/camera stream (audio always comes from here). Video track sent
+  // to viewers can be either this stream's camera track, or a screen-share
+  // track - swapped in-place with replaceTrack() so peer connections don't
+  // need to renegotiate.
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const currentVideoTrackRef = useRef<MediaStreamTrack | null>(null);
+
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const viewerPcRef = useRef<RTCPeerConnection | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -49,8 +58,11 @@ export default function LiveRoomClient({
       viewerPcRef.current.close();
       viewerPcRef.current = null;
     }
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    localStreamRef.current = null;
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current = null;
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    currentVideoTrackRef.current = null;
   }, []);
 
   // Host: join the room as soon as we're connected (chat/reactions/viewer-count
@@ -74,7 +86,8 @@ export default function LiveRoomClient({
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
-        localStreamRef.current = stream;
+        cameraStreamRef.current = stream;
+        currentVideoTrackRef.current = stream.getVideoTracks()[0] ?? null;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       } catch {
         setMediaError("לא ניתן לגשת למצלמה/מיקרופון. הצ'אט עדיין פעיל, אך לא תהיה שידור וידאו.");
@@ -92,10 +105,15 @@ export default function LiveRoomClient({
     if (!isHost || !socket) return;
 
     const onViewerJoined = async ({ socketId }: { socketId: string }) => {
-      const stream = localStreamRef.current;
-      if (!stream) return;
+      const camStream = cameraStreamRef.current;
+      if (!camStream) return;
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      const audioTrack = camStream.getAudioTracks()[0];
+      if (audioTrack) pc.addTrack(audioTrack, camStream);
+      const videoTrack = currentVideoTrackRef.current;
+      if (videoTrack) pc.addTrack(videoTrack, camStream);
+
       pc.onicecandidate = (e) => {
         if (e.candidate) {
           socket.emit("webrtc-ice-candidate", { to: socketId, candidate: e.candidate });
@@ -213,10 +231,99 @@ export default function LiveRoomClient({
 
   useEffect(() => cleanupPeers, [cleanupPeers]);
 
+  const revertToCamera = useCallback(() => {
+    const camStream = cameraStreamRef.current;
+    const camVideoTrack = camStream?.getVideoTracks()[0] ?? null;
+
+    peersRef.current.forEach((pc) => {
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (camVideoTrack) sender?.replaceTrack(camVideoTrack).catch(() => {});
+    });
+
+    currentVideoTrackRef.current = camVideoTrack;
+    if (localVideoRef.current && camStream) localVideoRef.current.srcObject = camStream;
+
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    setSourceMode("camera");
+  }, []);
+
+  async function shareScreen() {
+    setScreenShareError(null);
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setScreenShareError(
+        "שיתוף מסך לא נתמך כאן - נדרש חיבור מאובטח (HTTPS), או גישה דרך localhost באותו מחשב."
+      );
+      return;
+    }
+
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      screenStreamRef.current = screenStream;
+
+      peersRef.current.forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+        sender?.replaceTrack(screenTrack).catch(() => {});
+      });
+
+      currentVideoTrackRef.current = screenTrack;
+      if (localVideoRef.current) localVideoRef.current.srcObject = screenStream;
+      setSourceMode("screen");
+
+      // Fires when the user clicks the browser's native "Stop sharing" bar.
+      screenTrack.onended = () => revertToCamera();
+    } catch (err) {
+      // NotAllowedError covers both "permission denied" and "user cancelled
+      // the picker" - only surface a message if it's something else, so we
+      // don't nag on a plain cancel.
+      const name = err instanceof Error ? err.name : "";
+      if (name !== "NotAllowedError") {
+        setScreenShareError("לא ניתן היה לשתף את המסך. נסה שוב.");
+      }
+    }
+  }
+
+  function toggleScreenShare() {
+    if (sourceMode === "screen") revertToCamera();
+    else shareScreen();
+  }
+
+  // Keeps the stream floating on top of everything else (other apps, a
+  // full-screen game, etc.) once the user leaves this tab.
+  async function togglePiP() {
+    const video = isHost ? localVideoRef.current : remoteVideoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch {
+      // Not supported in this browser, or the video has no track yet.
+    }
+  }
+
   function endLive() {
-    socket?.emit("end-live", { roomId });
-    cleanupPeers();
-    router.push("/live");
+    if (!socket) {
+      cleanupPeers();
+      router.push("/live");
+      return;
+    }
+    // Wait for the server to confirm before navigating away (which
+    // disconnects this socket) - otherwise the "end-live" message can be
+    // lost in the disconnect race and the room lingers as still-live.
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cleanupPeers();
+      router.push("/live");
+    };
+    socket.emit("end-live", { roomId }, finish);
+    setTimeout(finish, 2000);
   }
 
   function react() {
@@ -267,9 +374,19 @@ export default function LiveRoomClient({
             <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />
             <span className="text-sm font-semibold">LIVE</span>
             <span className="text-sm text-white/80">· {title}</span>
+            {sourceMode === "screen" && <span className="text-sm text-accent-2">🖥️ מסך</span>}
           </div>
-          <div className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white">
-            👁️ {viewerCount}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={togglePiP}
+              title="חלון צף (Picture-in-Picture)"
+              className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white hover:bg-black/60"
+            >
+              🗔 חלון צף
+            </button>
+            <div className="rounded-full bg-black/40 px-3 py-1.5 text-sm text-white">
+              👁️ {viewerCount}
+            </div>
           </div>
         </div>
 
@@ -283,12 +400,27 @@ export default function LiveRoomClient({
         </div>
 
         {isHost && (
-          <button
-            onClick={endLive}
-            className="absolute bottom-4 left-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white"
-          >
-            סיים לייב
-          </button>
+          <div className="absolute bottom-4 left-4 flex flex-col items-start gap-2">
+            {screenShareError && (
+              <p className="max-w-xs rounded-lg bg-black/70 px-3 py-1.5 text-xs text-accent">
+                {screenShareError}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={endLive}
+                className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white"
+              >
+                סיים לייב
+              </button>
+              <button
+                onClick={toggleScreenShare}
+                className="rounded-full bg-black/50 px-4 py-2 text-sm font-semibold text-white hover:bg-black/70"
+              >
+                {sourceMode === "screen" ? "📷 חזרה למצלמה" : "🖥️ שתף מסך"}
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

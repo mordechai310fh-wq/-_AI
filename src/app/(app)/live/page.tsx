@@ -60,7 +60,7 @@ export default function LivePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl p-4">
+    <div className="mx-auto w-full max-w-2xl p-4 pb-20 md:pb-4">
       {userLoading ? null : hasFullAccess ? (
         <form
           onSubmit={goLive}

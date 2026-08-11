@@ -13,6 +13,7 @@ export default function FeedClient() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const loadedOnce = useRef(false);
   // Synchronous in-flight guard: `loading` state updates asynchronously, so two
   // calls fired in the same tick (initial-mount effect + IntersectionObserver's
@@ -61,8 +62,15 @@ export default function FeedClient() {
     return () => observer.disconnect();
   }, [loadMore]);
 
+  function handleCreated(post: PostItem) {
+    setPosts((prev) => [post, ...prev]);
+    // New post is prepended to the top - scroll there so it doesn't look
+    // like it vanished if the user was further down the feed.
+    containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
-    <div className="snap-y-feed h-[calc(100dvh-64px)] w-full">
+    <div ref={containerRef} className="snap-y-feed h-[calc(100dvh-64px)] w-full">
       {posts.map((post) => (
         <PostCard key={post.id} post={post} />
       ))}
@@ -77,9 +85,7 @@ export default function FeedClient() {
       <div ref={sentinelRef} className="h-1 w-full" />
       {loading && <p className="py-4 text-center text-sm text-muted">טוען...</p>}
 
-      {hasFullAccess && (
-        <CreatePostModal onCreated={(post) => setPosts((prev) => [post, ...prev])} />
-      )}
+      {hasFullAccess && <CreatePostModal onCreated={handleCreated} />}
     </div>
   );
 }

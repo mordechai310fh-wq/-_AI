@@ -21,7 +21,13 @@ const BAN_PRESETS = [
   { label: "לצמיתות", hours: 24 * 365 * 10 },
 ];
 
-export default function AdminPanelClient({ currentUserId }: { currentUserId: string }) {
+export default function AdminPanelClient({
+  currentUserId,
+  currentUserIsOwner,
+}: {
+  currentUserId: string;
+  currentUserIsOwner: boolean;
+}) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [banTarget, setBanTarget] = useState<string | null>(null);
@@ -104,6 +110,25 @@ export default function AdminPanelClient({ currentUserId }: { currentUserId: str
     }
   }
 
+  async function toggleOwner(u: AdminUser) {
+    setBusyId(u.id);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.id, isOwner: !u.isOwner }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function toggleRole(u: AdminUser) {
     setBusyId(u.id);
     setError(null);
@@ -125,7 +150,7 @@ export default function AdminPanelClient({ currentUserId }: { currentUserId: str
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl p-4">
+    <div className="mx-auto w-full max-w-4xl p-4 pb-20 md:pb-4">
       <h1 className="mb-1 text-2xl font-bold">🛠️ פאנל ניהול</h1>
       <p className="mb-6 text-sm text-muted">ניהול משתמשים, חסימות והרשאות מנהל</p>
 
@@ -167,21 +192,37 @@ export default function AdminPanelClient({ currentUserId }: { currentUserId: str
                   )}
                 </div>
 
-                {!u.isOwner && (
+                {(!u.isOwner || (currentUserIsOwner && u.id !== currentUserId)) && (
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => toggleAccess(u)}
-                      disabled={busyId === u.id}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
-                        u.hasAccess
-                          ? "border border-border text-muted hover:text-foreground"
-                          : "bg-emerald-600 text-white"
-                      }`}
-                    >
-                      {u.hasAccess ? "הסר גישה ללייב/AI" : "תן גישה ללייב + AI"}
-                    </button>
+                    {!u.isOwner && (
+                      <button
+                        onClick={() => toggleAccess(u)}
+                        disabled={busyId === u.id}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
+                          u.hasAccess
+                            ? "border border-border text-muted hover:text-foreground"
+                            : "bg-emerald-600 text-white"
+                        }`}
+                      >
+                        {u.hasAccess ? "הסר גישה ללייב/AI" : "תן גישה ללייב + AI"}
+                      </button>
+                    )}
 
-                    {u.id !== currentUserId && (
+                    {currentUserIsOwner && u.id !== currentUserId && (
+                      <button
+                        onClick={() => toggleOwner(u)}
+                        disabled={busyId === u.id}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
+                          u.isOwner
+                            ? "border border-border text-muted hover:text-foreground"
+                            : "bg-amber-500 text-white"
+                        }`}
+                      >
+                        {u.isOwner ? "הסר בעלות" : "👑 הפוך לבעלים"}
+                      </button>
+                    )}
+
+                    {!u.isOwner && u.id !== currentUserId && (
                       <>
                         <button
                           onClick={() => toggleRole(u)}

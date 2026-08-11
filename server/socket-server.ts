@@ -3,9 +3,11 @@ import { Server, Socket } from "socket.io";
 import { verifySession } from "../src/lib/session";
 import { prisma } from "../src/lib/prisma";
 
-// Render (and most PaaS hosts) assign the public port via $PORT; SOCKET_PORT
-// is used for local dev / the Electron app, where we pick the port ourselves.
-const PORT = Number(process.env.PORT ?? process.env.SOCKET_PORT ?? 4001);
+// SOCKET_PORT takes priority: local dev and the Electron app set it
+// explicitly, and local dev tooling may also export a generic $PORT meant
+// for the Next.js process (which runs alongside this one) - don't steal it.
+// On Render, only $PORT is set (no SOCKET_PORT), so that's the fallback.
+const PORT = Number(process.env.SOCKET_PORT ?? process.env.PORT ?? 4001);
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -172,10 +174,13 @@ io.on("connection", (socket: Socket) => {
     io.to(to).emit("webrtc-ice-candidate", { from: socket.id, candidate });
   });
 
-  socket.on("end-live", async ({ roomId }: { roomId: string }) => {
-    if (!roomId) return;
-    if (hostSocketByRoom.get(roomId) !== socket.id) return;
-    await endLive(roomId);
+  socket.on("end-live", async ({ roomId }: { roomId: string }, ack?: () => void) => {
+    if (roomId && hostSocketByRoom.get(roomId) === socket.id) {
+      await endLive(roomId);
+    }
+    // Client waits for this before navigating away/disconnecting, so the
+    // DB update + broadcast aren't lost in a disconnect race.
+    ack?.();
   });
 
   socket.on("disconnect", async () => {

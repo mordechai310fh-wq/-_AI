@@ -30,7 +30,7 @@ export default function Navbar({ username, role }: Props) {
         המגניבולים
       </Link>
 
-      <nav className="flex items-center gap-1 rounded-full border border-border bg-card p-1">
+      <nav className="hidden items-center gap-1 rounded-full border border-border bg-card p-1 md:flex">
         {LINKS.map((link) => (
           <Link
             key={link.href}

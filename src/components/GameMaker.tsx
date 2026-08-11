@@ -69,7 +69,7 @@ export default function GameMaker() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-64px)] flex-col gap-4 overflow-y-auto p-4">
+    <div className="flex h-[calc(100dvh-64px)] flex-col gap-4 overflow-y-auto p-4 pb-20 md:pb-4">
       <form onSubmit={generate} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
         <label className="text-sm text-muted">תאר את המשחק שאתה רוצה שמגניב ייצור</label>
         <textarea

@@ -2,6 +2,8 @@ export type PostItem = {
   id: string;
   text: string;
   imageUrl: string | null;
+  videoUrl: string | null;
+  audioUrl: string | null;
   gameCode: string | null;
   gameType: string | null;
   gameControls: string | null;

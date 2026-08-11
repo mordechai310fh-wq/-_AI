@@ -6,5 +6,5 @@ export default async function AdminPage() {
   const user = await getCurrentUser();
   if (!user || user.role !== "ADMIN") redirect("/feed");
 
-  return <AdminPanelClient currentUserId={user.id} />;
+  return <AdminPanelClient currentUserId={user.id} currentUserIsOwner={user.isOwner} />;
 }

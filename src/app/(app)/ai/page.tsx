@@ -61,7 +61,7 @@ function ChatTab() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-64px-52px)] flex-col p-4">
+    <div className="flex h-[calc(100dvh-64px-52px-64px)] flex-col p-4 md:h-[calc(100dvh-64px-52px)]">
       <div className="flex-1 overflow-y-auto rounded-2xl border border-border bg-card p-4">
         {loading && <p className="text-sm text-muted">טוען שיחה...</p>}
         {!loading && messages.length === 0 && (
