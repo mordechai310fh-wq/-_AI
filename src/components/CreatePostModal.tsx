@@ -33,11 +33,24 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
     setPreview(f ? URL.createObjectURL(f) : null);
   }
 
+  // The server can occasionally respond with an empty/non-JSON body (e.g. a
+  // free-tier server waking up from sleep, or a dropped connection on a slow
+  // upload) - res.json() throws a cryptic "Unexpected end of JSON input" in
+  // that case. Give a clear, actionable message instead.
+  async function safeJson(res: Response) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error("השרת לא הגיב כראוי (יכול לקרות אחרי חוסר פעילות). נסה שוב בעוד רגע.");
+    }
+  }
+
   async function uploadFile(file: File): Promise<string> {
     const fd = new FormData();
     fd.append("file", file);
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) throw new Error(data.error ?? "שגיאה בהעלאה");
     return data.url;
   }
@@ -64,7 +77,7 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, imageUrl, videoUrl, audioUrl }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error ?? "שגיאה בפרסום");
 
       onCreated(data.item);
