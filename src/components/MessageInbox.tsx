@@ -43,6 +43,13 @@ export default function MessageInbox() {
     }).catch(() => {});
   }
 
+  // Auto-vanish each toast 2 seconds after it appears.
+  useEffect(() => {
+    if (queue.length === 0) return;
+    const timer = setTimeout(() => dismiss(queue[0]), 2000);
+    return () => clearTimeout(timer);
+  }, [queue]);
+
   if (queue.length === 0) return null;
 
   return (
@@ -50,10 +57,10 @@ export default function MessageInbox() {
       {queue.map((message) => (
         <div
           key={message.id}
-          className="flex w-full max-w-sm items-start gap-3 rounded-2xl border border-border bg-card p-4 shadow-lg"
+          className="inline-flex w-fit max-w-sm items-start gap-3 rounded-2xl border border-border bg-card p-4 shadow-lg"
         >
           <span className="text-xl">{message.targetUserId ? "✉️" : "📢"}</span>
-          <div className="flex-1">
+          <div>
             <p className="mb-1 text-xs font-semibold text-muted">
               {message.targetUserId ? "הודעה פרטית מהמנהל" : "הודעה כללית"}
             </p>
