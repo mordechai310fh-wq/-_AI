@@ -7,6 +7,7 @@ import CommentDrawer from "@/components/CommentDrawer";
 import GamePostFrame from "@/components/GamePostFrame";
 import PostMedia from "@/components/PostMedia";
 import Avatar from "@/components/Avatar";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 
 const GRADIENTS = [
   "from-[#fe2c55] to-[#8b1e3f]",
@@ -22,11 +23,29 @@ function gradientFor(id: string) {
 }
 
 export default function PostCard({ post }: { post: PostItem }) {
+  const { user } = useCurrentUser();
   const [liked, setLiked] = useState(post.likedByMe);
   const [likeCount, setLikeCount] = useState(post.likeCount);
   const [commentCount, setCommentCount] = useState(post.commentCount);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+
+  const canDelete = !!user && (user.id === post.author.id || user.isOwner || user.role === "ADMIN");
+
+  async function deletePost() {
+    if (deleting || !confirm("למחוק את הפוסט הזה?")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      if (res.ok) setDeleted(true);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (deleted) return null;
 
   async function toggleLike() {
     if (busy) return;
@@ -84,6 +103,16 @@ export default function PostCard({ post }: { post: PostItem }) {
             <span className="text-3xl">💬</span>
             <span className="text-xs">{commentCount}</span>
           </button>
+          {canDelete && (
+            <button
+              onClick={deletePost}
+              disabled={deleting}
+              className="flex flex-col items-center gap-1 text-white disabled:opacity-50"
+              title="מחק פוסט"
+            >
+              <span className="text-3xl">🗑️</span>
+            </button>
+          )}
         </div>
       </div>
 
