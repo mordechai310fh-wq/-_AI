@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useGlobalMute } from "@/lib/useGlobalMute";
 
 export default function PostMedia({
   imageUrl,
@@ -15,7 +16,7 @@ export default function PostMedia({
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [inView, setInView] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const { muted, setMuted } = useGlobalMute();
 
   // Only the post currently on screen plays - matches the TikTok feed
   // convention and avoids every post's media playing at once.
@@ -45,8 +46,19 @@ export default function PostMedia({
     }
   }, [inView]);
 
+  // The `muted` JSX attribute only reliably applies on first mount - some
+  // browsers don't pick up later changes made only through the React prop,
+  // so toggling mute state alone can silently fail to un-silence media that's
+  // already playing. Setting the property imperatively is what actually
+  // takes effect.
+  useEffect(() => {
+    const videoMuted = hasSeparateSound ? true : muted;
+    if (videoRef.current) videoRef.current.muted = videoMuted;
+    if (audioRef.current) audioRef.current.muted = muted;
+  }, [muted, hasSeparateSound]);
+
   function toggleMute() {
-    setMuted((m) => !m);
+    setMuted(!muted);
   }
 
   const hasSound = !!videoUrl || !!audioUrl;
