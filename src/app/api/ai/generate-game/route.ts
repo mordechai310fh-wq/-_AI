@@ -6,6 +6,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 
 const schema = z.object({
   prompt: z.string().trim().min(3, "תאר את המשחק בכמה מילים").max(500, "התיאור ארוך מדי"),
+  imageUrl: z.string().url().optional().nullable(),
 });
 
 export async function POST(req: NextRequest) {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { code, controls } = await generateGame(parsed.data.prompt);
+    const { code, controls } = await generateGame(parsed.data.prompt, parsed.data.imageUrl);
     return NextResponse.json({ code, controls });
   } catch (err) {
     console.error("generate-game error:", err);

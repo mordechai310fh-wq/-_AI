@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 export default function GameMaker() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [refImageUrl, setRefImageUrl] = useState<string | null>(null);
+  const [uploadingRef, setUploadingRef] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [controls, setControls] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -13,10 +15,28 @@ export default function GameMaker() {
   const [error, setError] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
   const previewRef = useRef<HTMLIFrameElement>(null);
+  const refImageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (code) previewRef.current?.focus();
   }, [code]);
+
+  async function handleRefImage(file: File) {
+    setUploadingRef(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה בהעלאה");
+      setRefImageUrl(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setUploadingRef(false);
+    }
+  }
 
   async function generate(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +50,7 @@ export default function GameMaker() {
       const res = await fetch("/api/ai/generate-game", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, imageUrl: refImageUrl }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "שגיאה ביצירת המשחק");
@@ -82,6 +102,43 @@ export default function GameMaker() {
         <p className="text-xs text-muted">
           💡 תוסיף <span className="font-mono text-accent">/point</span> לתיאור כדי שהניקוד במשחק יהפוך למטבעות אמיתיים שאפשר להוציא בחנות.
         </p>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => refImageInputRef.current?.click()}
+            disabled={uploadingRef}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground disabled:opacity-50"
+          >
+            {uploadingRef ? "מעלה..." : "📎 הוסף תמונת רפרנס"}
+          </button>
+          {refImageUrl && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={refImageUrl} alt="רפרנס" className="h-10 w-10 rounded-lg object-cover" />
+              <button
+                type="button"
+                onClick={() => setRefImageUrl(null)}
+                className="text-sm text-muted hover:text-foreground"
+              >
+                הסר
+              </button>
+            </>
+          )}
+          <input
+            ref={refImageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleRefImage(file);
+            }}
+          />
+        </div>
+        {refImageUrl && (
+          <p className="text-xs text-muted">התמונה תשמש כדמות/סמל הראשי במשחק.</p>
+        )}
 
         {error && <p className="text-sm text-accent">{error}</p>}
 

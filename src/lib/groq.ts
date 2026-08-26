@@ -1,5 +1,5 @@
 import Groq from "groq-sdk";
-import { openRouterChatCompletion, isRateLimitError } from "./openrouter";
+import { openRouterChatCompletion, shouldFallbackToOpenRouter } from "./openrouter";
 
 let client: Groq | null = null;
 
@@ -13,9 +13,19 @@ function getClient() {
 }
 
 export const AI_NAME = "מגניב";
-export const AI_MODEL = "llama-3.3-70b-versatile";
+export const JUNIOR_AI_NAME = "מגניב ג'וניור";
+// llama-3.3-70b-versatile was deprecated/removed from Groq; qwen3.8-27b
+// answers directly (many of Groq's other current models are reasoning
+// models that burn the token budget on hidden "thinking" before any
+// visible content, which truncated our game-generation output).
+export const AI_MODEL = "qwen/qwen3.8-27b";
 
 const SYSTEM_PROMPT = `אתה "${AI_NAME}", עוזר AI ידידותי בתוך אפליקציית הרשת החברתית "המגניבולים". ענה בעברית, בקצרה וברוח טובה, אלא אם המשתמש כותב בשפה אחרת.`;
+
+// A distinct, separate persona/conversation for users who bought limited
+// chat access in the shop instead of full access - not the same bot or
+// history as SYSTEM_PROMPT above.
+const JUNIOR_SYSTEM_PROMPT = `אתה "${JUNIOR_AI_NAME}", גרסה קטנה וידידותית של מגניב, בתוך אפליקציית הרשת החברתית "המגניבולים". אתה עוזר בסיסי - תענה בקצרה, בעברית, בנימה חמה ומשועשעת, אלא אם המשתמש כותב בשפה אחרת. אתה לא יכול ליצור משחקים (זה רק ב-מגניב המלא) - אם מבקשים ממך, תפנה בעדינות לקנות גישה מלאה.`;
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 type Msg = { role: "system" | "user" | "assistant"; content: string };
@@ -33,8 +43,8 @@ async function completeChat(messages: Msg[], temperature: number, max_tokens: nu
     });
     return completion.choices[0]?.message?.content ?? "";
   } catch (err) {
-    if (!isRateLimitError(err)) throw err;
-    console.warn("Groq rate-limited, falling back to OpenRouter");
+    if (!shouldFallbackToOpenRouter(err)) throw err;
+    console.warn("Groq unavailable, falling back to OpenRouter:", err);
     return openRouterChatCompletion(messages, { temperature, max_tokens });
   }
 }
@@ -42,6 +52,11 @@ async function completeChat(messages: Msg[], temperature: number, max_tokens: nu
 export async function askAi(history: ChatMessage[]) {
   const messages: Msg[] = [{ role: "system", content: SYSTEM_PROMPT }, ...history];
   return completeChat(messages, 0.7, 1024);
+}
+
+export async function askJuniorAi(history: ChatMessage[]) {
+  const messages: Msg[] = [{ role: "system", content: JUNIOR_SYSTEM_PROMPT }, ...history];
+  return completeChat(messages, 0.7, 512);
 }
 
 const GAME_SYSTEM_PROMPT = `אתה מחולל משחקי דפדפן. תפקידך להחזיר תשובה בפורמט מדויק הבא, ללא שום טקסט נוסף, הסברים, או markdown code fences (בלי \`\`\`):
@@ -99,8 +114,24 @@ function isValidGameHtml(html: string): boolean {
   return /<canvas/i.test(html) && /getContext\(\s*["']2d["']\s*\)/.test(html);
 }
 
-async function requestGame(prompt: string, temperature: number, withPoints: boolean) {
-  const systemPrompt = withPoints ? GAME_SYSTEM_PROMPT + POINTS_INSTRUCTIONS : GAME_SYSTEM_PROMPT;
+function referenceImageInstructions(imageUrl: string) {
+  return `
+
+המשתמש צירף תמונת רפרנס בכתובת: ${imageUrl}
+טען אותה בקוד ה-JavaScript עם קוד כמו: const refImg = new Image(); refImg.src = "${imageUrl}";
+המתן לאירוע refImg.onload לפני שהמשחק מתחיל לצייר אותה, והשתמש בה כסמל/דמות/אובייקט מרכזי במשחק (למשל דמות השחקן), מצוירת עם ctx.drawImage. אל תמציא כתובת אחרת - השתמש בדיוק בכתובת שסופקה.`;
+}
+
+async function requestGame(
+  prompt: string,
+  temperature: number,
+  withPoints: boolean,
+  imageUrl: string | null
+) {
+  let systemPrompt = GAME_SYSTEM_PROMPT;
+  if (withPoints) systemPrompt += POINTS_INSTRUCTIONS;
+  if (imageUrl) systemPrompt += referenceImageInstructions(imageUrl);
+
   const messages: Msg[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: `תיאור המשחק המבוקש: ${prompt}` },
@@ -113,17 +144,20 @@ async function requestGame(prompt: string, temperature: number, withPoints: bool
 
 // A "/point" anywhere in the prompt asks for a game whose score converts to
 // real coins (see src/app/api/points/award/route.ts) - stripped out before
-// sending the description itself to the model.
-export async function generateGame(rawPrompt: string): Promise<GeneratedGame> {
+// sending the description itself to the model. An optional reference image
+// (already uploaded to Cloudinary) gets wired into the game as a sprite -
+// the model never needs to "see" it, just write code that loads the URL.
+export async function generateGame(rawPrompt: string, imageUrl?: string | null): Promise<GeneratedGame> {
   const withPoints = /\/point\b/i.test(rawPrompt);
   const prompt = rawPrompt.replace(/\/point\b/gi, "").trim();
+  const ref = imageUrl ?? null;
 
-  const first = await requestGame(prompt, 0.5, withPoints);
+  const first = await requestGame(prompt, 0.5, withPoints, ref);
   if (first && isValidGameHtml(first.code)) return first;
 
   // Retry once, more deterministically, if the first attempt was missing,
   // truncated, or didn't actually use the Canvas 2D API.
-  const second = await requestGame(prompt, 0.2, withPoints);
+  const second = await requestGame(prompt, 0.2, withPoints, ref);
   if (second && isValidGameHtml(second.code)) return second;
 
   const fallback = first ?? second;

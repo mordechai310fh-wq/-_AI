@@ -72,5 +72,6 @@ model AiMessage {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      String
   content   String
+  tier      String   @default("full") // "full" (מגניב) or "junior" (מגניב ג'וניור) - kept as separate conversations
   createdAt DateTime @default(now())
 }

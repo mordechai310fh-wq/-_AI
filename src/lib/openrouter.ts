@@ -33,7 +33,11 @@ export async function openRouterChatCompletion(
   return data.choices?.[0]?.message?.content ?? "";
 }
 
-export function isRateLimitError(err: unknown): boolean {
+// Falls back to OpenRouter both on rate limits (429) and when the model
+// itself is gone (404 model_not_found) - providers deprecate/rename models
+// over time, and a silent full outage is worse than a slower fallback.
+export function shouldFallbackToOpenRouter(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
-  return (err as { status?: number }).status === 429;
+  const status = (err as { status?: number }).status;
+  return status === 429 || status === 404;
 }

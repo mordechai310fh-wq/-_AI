@@ -7,7 +7,7 @@ import GameMaker from "@/components/GameMaker";
 
 type Msg = { id: string; role: string; content: string };
 
-function ChatTab() {
+function ChatTab({ tier, placeholder }: { tier: "full" | "junior"; placeholder: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -15,11 +15,12 @@ function ChatTab() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/ai/chat")
+    setLoading(true);
+    fetch(`/api/ai/chat?tier=${tier}`)
       .then((r) => r.json())
       .then((data) => setMessages(data.items ?? []))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tier]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -39,7 +40,7 @@ function ChatTab() {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, tier }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -82,7 +83,7 @@ function ChatTab() {
           ))}
           {sending && (
             <div className="self-start rounded-2xl bg-background px-4 py-2 text-sm text-muted">
-              מגניב חושב...
+              חושב...
             </div>
           )}
         </div>
@@ -93,7 +94,7 @@ function ChatTab() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="כתוב הודעה למגניב..."
+          placeholder={placeholder}
           className="flex-1 rounded-full border border-border bg-card px-4 py-2.5 text-sm outline-none focus:border-accent"
         />
         <button
@@ -110,8 +111,10 @@ function ChatTab() {
 
 export default function AiPage() {
   const { user, loading, hasFullAccess } = useCurrentUser();
-  const [tab, setTab] = useState<"chat" | "game">("chat");
   const hasJuniorChat = !!user && user.juniorChatCredits > 0;
+  const [tab, setTab] = useState<"chat" | "game" | "junior" | null>(null);
+
+  const activeTab = tab ?? (hasFullAccess ? "chat" : hasJuniorChat ? "junior" : null);
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -123,40 +126,49 @@ export default function AiPage() {
 
       {loading ? (
         <p className="p-4 text-sm text-muted">טוען...</p>
-      ) : hasFullAccess ? (
-        <>
-          <div className="flex gap-1 p-4 pb-3">
-            <button
-              onClick={() => setTab("chat")}
-              className={`rounded-full px-4 py-1.5 text-sm ${
-                tab === "chat" ? "bg-accent text-white" : "border border-border text-muted"
-              }`}
-            >
-              💬 צ&apos;אט
-            </button>
-            <button
-              onClick={() => setTab("game")}
-              className={`rounded-full px-4 py-1.5 text-sm ${
-                tab === "game" ? "bg-accent text-white" : "border border-border text-muted"
-              }`}
-            >
-              🎮 יצירת משחק
-            </button>
-          </div>
-
-          {tab === "chat" ? <ChatTab /> : <GameMaker />}
-        </>
-      ) : hasJuniorChat ? (
-        <>
-          <p className="px-4 pb-3 text-xs text-muted">
-            🔰 מגניב ג&apos;וניור - {user!.juniorChatCredits} הודעות נשארו. יצירת משחקים דורשת גישה מלאה.
-          </p>
-          <ChatTab />
-        </>
-      ) : (
+      ) : !hasFullAccess && !hasJuniorChat ? (
         <div className="p-4">
           <LockedFeature text="השימוש בעוזר ה-AI ובחילול משחקים דורש גישה מיוחדת, או שאפשר לקנות מגניב ג'וניור בחנות." />
         </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1 p-4 pb-3">
+            {hasFullAccess && (
+              <button
+                onClick={() => setTab("chat")}
+                className={`rounded-full px-4 py-1.5 text-sm ${
+                  activeTab === "chat" ? "bg-accent text-white" : "border border-border text-muted"
+                }`}
+              >
+                💬 מגניב
+              </button>
+            )}
+            {hasFullAccess && (
+              <button
+                onClick={() => setTab("game")}
+                className={`rounded-full px-4 py-1.5 text-sm ${
+                  activeTab === "game" ? "bg-accent text-white" : "border border-border text-muted"
+                }`}
+              >
+                🎮 יצירת משחק
+              </button>
+            )}
+            {hasJuniorChat && (
+              <button
+                onClick={() => setTab("junior")}
+                className={`rounded-full px-4 py-1.5 text-sm ${
+                  activeTab === "junior" ? "bg-accent text-white" : "border border-border text-muted"
+                }`}
+              >
+                🔰 מגניב ג&apos;וניור ({user!.juniorChatCredits})
+              </button>
+            )}
+          </div>
+
+          {activeTab === "chat" && <ChatTab tier="full" placeholder="כתוב הודעה למגניב..." />}
+          {activeTab === "game" && <GameMaker />}
+          {activeTab === "junior" && <ChatTab tier="junior" placeholder="כתוב הודעה למגניב ג'וניור..." />}
+        </>
       )}
     </div>
   );

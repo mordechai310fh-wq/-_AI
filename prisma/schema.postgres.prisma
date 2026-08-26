@@ -75,5 +75,6 @@ model AiMessage {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   role      String
   content   String
+  tier      String   @default("full")
   createdAt DateTime @default(now())
 }
