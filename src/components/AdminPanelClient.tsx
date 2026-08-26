@@ -38,8 +38,19 @@ export default function AdminPanelClient({
   const [banReason, setBanReason] = useState("");
   const [coinsTarget, setCoinsTarget] = useState<string | null>(null);
   const [coinsAmount, setCoinsAmount] = useState(1000);
+  const [msgTarget, setMsgTarget] = useState<string | null>(null);
+  const [msgText, setMsgText] = useState("");
+  const [pwTarget, setPwTarget] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [search, setSearch] = useState("");
+  const [globalMsg, setGlobalMsg] = useState("");
+  const [globalMsgSent, setGlobalMsgSent] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const filteredUsers = users.filter((u) =>
+    u.username.toLowerCase().includes(search.trim().toLowerCase())
+  );
 
   async function load() {
     setLoading(true);
@@ -154,6 +165,71 @@ export default function AdminPanelClient({
     }
   }
 
+  async function submitMessage(userId: string) {
+    if (!msgText.trim()) return;
+    setBusyId(userId);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: userId, text: msgText }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      setMsgTarget(null);
+      setMsgText("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function submitGlobalMessage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!globalMsg.trim()) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: null, text: globalMsg }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      setGlobalMsg("");
+      setGlobalMsgSent(true);
+      setTimeout(() => setGlobalMsgSent(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    }
+  }
+
+  async function submitResetPassword(userId: string) {
+    if (newPassword.length < 6) {
+      setError("הסיסמה חייבת להכיל לפחות 6 תווים");
+      return;
+    }
+    setBusyId(userId);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      setPwTarget(null);
+      setNewPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function toggleRole(u: AdminUser) {
     setBusyId(u.id);
     setError(null);
@@ -179,11 +255,40 @@ export default function AdminPanelClient({
       <h1 className="mb-1 text-2xl font-bold">🛠️ פאנל ניהול</h1>
       <p className="mb-6 text-sm text-muted">ניהול משתמשים, חסימות והרשאות מנהל</p>
 
+      <form onSubmit={submitGlobalMessage} className="mb-6 flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
+        <label className="text-sm font-semibold">📢 שלח הודעה כללית לכל המשתמשים</label>
+        <div className="flex gap-2">
+          <input
+            value={globalMsg}
+            onChange={(e) => setGlobalMsg(e.target.value)}
+            placeholder="כתוב הודעה שכולם יראו..."
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          <button
+            type="submit"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white"
+          >
+            שלח לכולם
+          </button>
+        </div>
+        {globalMsgSent && <p className="text-xs text-emerald-500">נשלח!</p>}
+      </form>
+
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="🔍 חפש משתמש לפי שם..."
+        className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+      />
+
       {error && <p className="mb-4 text-sm text-accent">{error}</p>}
       {loading && <p className="text-sm text-muted">טוען משתמשים...</p>}
+      {!loading && filteredUsers.length === 0 && (
+        <p className="text-sm text-muted">לא נמצאו משתמשים.</p>
+      )}
 
       <div className="flex flex-col gap-3">
-        {users.map((u) => {
+        {filteredUsers.map((u) => {
           const banned = isBanned(u);
           return (
             <div key={u.id} className="rounded-xl border border-border bg-card p-4">
@@ -227,6 +332,20 @@ export default function AdminPanelClient({
                   >
                     🪙 תן מטבעות
                   </button>
+                  <button
+                    onClick={() => setMsgTarget(msgTarget === u.id ? null : u.id)}
+                    className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:text-foreground"
+                  >
+                    ✉️ שלח הודעה
+                  </button>
+                  {(!u.isOwner || u.id === currentUserId || currentUserIsOwner) && (
+                    <button
+                      onClick={() => setPwTarget(pwTarget === u.id ? null : u.id)}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:text-foreground"
+                    >
+                      🔑 אפס סיסמה
+                    </button>
+                  )}
 
                   {(!u.isOwner || (currentUserIsOwner && u.id !== currentUserId)) && (
                     <>
@@ -314,6 +433,59 @@ export default function AdminPanelClient({
                       className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       אשר
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {msgTarget === u.id && (
+                <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                  <input
+                    value={msgText}
+                    onChange={(e) => setMsgText(e.target.value)}
+                    placeholder="ההודעה שתישלח למשתמש הזה..."
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs outline-none focus:border-accent"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setMsgTarget(null)}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted"
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      onClick={() => submitMessage(u.id)}
+                      disabled={busyId === u.id}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      שלח
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {pwTarget === u.id && (
+                <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                  <input
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="סיסמה חדשה (לפחות 6 תווים)"
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs outline-none focus:border-accent"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setPwTarget(null)}
+                      className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted"
+                    >
+                      ביטול
+                    </button>
+                    <button
+                      onClick={() => submitResetPassword(u.id)}
+                      disabled={busyId === u.id}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      אפס סיסמה
                     </button>
                   </div>
                 </div>

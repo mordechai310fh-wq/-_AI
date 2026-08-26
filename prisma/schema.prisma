@@ -20,12 +20,14 @@ model User {
   coins             Int      @default(0)
   postCredits       Int      @default(0) // lets a user without full access post one video
   juniorChatCredits Int      @default(0) // messages left with the limited AI chat
+  lastSeenMessageAt DateTime? // admin messages (global/private) created after this are still "unread"
   createdAt    DateTime @default(now())
 
   posts         Post[]
   comments      Comment[]
   likes         Like[]
   aiMessages    AiMessage[]
+  adminMessages AdminMessage[]
 }
 
 model Post {
@@ -74,4 +76,12 @@ model AiMessage {
   content   String
   tier      String   @default("full") // "full" (מגניב) or "junior" (מגניב ג'וניור) - kept as separate conversations
   createdAt DateTime @default(now())
+}
+
+model AdminMessage {
+  id           String   @id @default(cuid())
+  targetUserId String? // null = global broadcast to everyone
+  targetUser   User?    @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  text         String
+  createdAt    DateTime @default(now())
 }

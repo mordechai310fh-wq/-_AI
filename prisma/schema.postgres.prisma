@@ -23,12 +23,14 @@ model User {
   coins             Int      @default(0)
   postCredits       Int      @default(0)
   juniorChatCredits Int      @default(0)
+  lastSeenMessageAt DateTime?
   createdAt    DateTime @default(now())
 
   posts         Post[]
   comments      Comment[]
   likes         Like[]
   aiMessages    AiMessage[]
+  adminMessages AdminMessage[]
 }
 
 model Post {
@@ -77,4 +79,12 @@ model AiMessage {
   content   String
   tier      String   @default("full")
   createdAt DateTime @default(now())
+}
+
+model AdminMessage {
+  id           String   @id @default(cuid())
+  targetUserId String?
+  targetUser   User?    @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  text         String
+  createdAt    DateTime @default(now())
 }

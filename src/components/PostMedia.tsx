@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useGlobalMute } from "@/lib/useGlobalMute";
 
 export default function PostMedia({
@@ -17,6 +17,23 @@ export default function PostMedia({
   const audioRef = useRef<HTMLAudioElement>(null);
   const [inView, setInView] = useState(false);
   const { muted, setMuted } = useGlobalMute();
+  // Portrait videos fill the phone-shaped feed nicely with a crop (TikTok's
+  // usual look), but a landscape/widescreen source cropped the same way
+  // loses most of the frame - scale those down to fit instead of cropping.
+  const [videoFit, setVideoFit] = useState<"cover" | "contain">("cover");
+
+  function handleLoadedMetadata() {
+    const v = videoRef.current;
+    if (!v) return;
+    setVideoFit(v.videoWidth > v.videoHeight ? "contain" : "cover");
+  }
+
+  const [imageFit, setImageFit] = useState<"cover" | "contain">("cover");
+
+  function handleImageLoad(e: SyntheticEvent<HTMLImageElement>) {
+    const img = e.currentTarget;
+    setImageFit(img.naturalWidth > img.naturalHeight ? "contain" : "cover");
+  }
 
   // Only the post currently on screen plays - matches the TikTok feed
   // convention and avoids every post's media playing at once.
@@ -72,11 +89,19 @@ export default function PostMedia({
           muted={hasSeparateSound ? true : muted}
           loop
           playsInline
-          className="h-full w-full object-cover"
+          onLoadedMetadata={handleLoadedMetadata}
+          className={`h-full w-full ${videoFit === "contain" ? "bg-black object-contain" : "object-cover"}`}
         />
       ) : imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img
+          src={imageUrl}
+          alt=""
+          onLoad={handleImageLoad}
+          className={`absolute inset-0 h-full w-full ${
+            imageFit === "contain" ? "bg-black object-contain" : "object-cover"
+          }`}
+        />
       ) : null}
 
       {audioUrl && <audio ref={audioRef} src={audioUrl} muted={muted} loop />}

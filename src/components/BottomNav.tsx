@@ -13,7 +13,10 @@ export default function BottomNav({ role }: { role: string }) {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-border bg-background/90 py-2 backdrop-blur md:hidden">
+    <nav
+      className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-border bg-background/90 pt-2 backdrop-blur md:hidden"
+      style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+    >
       {LINKS.map((link) => (
         <Link
           key={link.href}
