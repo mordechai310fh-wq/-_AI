@@ -109,8 +109,9 @@ function ChatTab() {
 }
 
 export default function AiPage() {
-  const { loading, hasFullAccess } = useCurrentUser();
+  const { user, loading, hasFullAccess } = useCurrentUser();
   const [tab, setTab] = useState<"chat" | "game">("chat");
+  const hasJuniorChat = !!user && user.juniorChatCredits > 0;
 
   return (
     <div className="mx-auto w-full max-w-2xl">
@@ -122,11 +123,7 @@ export default function AiPage() {
 
       {loading ? (
         <p className="p-4 text-sm text-muted">טוען...</p>
-      ) : !hasFullAccess ? (
-        <div className="p-4">
-          <LockedFeature text="השימוש בעוזר ה-AI ובחילול משחקים דורש גישה מיוחדת." />
-        </div>
-      ) : (
+      ) : hasFullAccess ? (
         <>
           <div className="flex gap-1 p-4 pb-3">
             <button
@@ -149,6 +146,17 @@ export default function AiPage() {
 
           {tab === "chat" ? <ChatTab /> : <GameMaker />}
         </>
+      ) : hasJuniorChat ? (
+        <>
+          <p className="px-4 pb-3 text-xs text-muted">
+            🔰 מגניב ג&apos;וניור - {user!.juniorChatCredits} הודעות נשארו. יצירת משחקים דורשת גישה מלאה.
+          </p>
+          <ChatTab />
+        </>
+      ) : (
+        <div className="p-4">
+          <LockedFeature text="השימוש בעוזר ה-AI ובחילול משחקים דורש גישה מיוחדת, או שאפשר לקנות מגניב ג'וניור בחנות." />
+        </div>
       )}
     </div>
   );

@@ -64,6 +64,11 @@ CONTROLS: חצים לתזוזה, רווח לקפיצה
 <!DOCTYPE html>
 ...`;
 
+const POINTS_INSTRUCTIONS = `
+דרישה נוספת: זהו משחק עם מערכת נקודות אמיתיות. בכל פעם שהניקוד עולה, קרא מייד ל:
+window.parent.postMessage({ type: "megnivolim-points", points: <כמות הנקודות שנוספו הפעם, לא הסכום הכולל> }, "*");
+שלח רק את הנקודות שנוספו הפעם (ה-delta), לא את הניקוד הכולל.`;
+
 const GAME_FALLBACK_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{margin:0;background:#050506;color:#f5f5f7;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center}
 </style></head><body><div>מגניב לא הצליח ליצור את המשחק הפעם 😅<br/>נסה תיאור אחר.</div></body></html>`;
@@ -94,9 +99,10 @@ function isValidGameHtml(html: string): boolean {
   return /<canvas/i.test(html) && /getContext\(\s*["']2d["']\s*\)/.test(html);
 }
 
-async function requestGame(prompt: string, temperature: number) {
+async function requestGame(prompt: string, temperature: number, withPoints: boolean) {
+  const systemPrompt = withPoints ? GAME_SYSTEM_PROMPT + POINTS_INSTRUCTIONS : GAME_SYSTEM_PROMPT;
   const messages: Msg[] = [
-    { role: "system", content: GAME_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     { role: "user", content: `תיאור המשחק המבוקש: ${prompt}` },
   ];
   // Groq's on-demand tier caps at 12k tokens/minute; keep this well under
@@ -105,13 +111,19 @@ async function requestGame(prompt: string, temperature: number) {
   return parseGameResponse(raw);
 }
 
-export async function generateGame(prompt: string): Promise<GeneratedGame> {
-  const first = await requestGame(prompt, 0.5);
+// A "/point" anywhere in the prompt asks for a game whose score converts to
+// real coins (see src/app/api/points/award/route.ts) - stripped out before
+// sending the description itself to the model.
+export async function generateGame(rawPrompt: string): Promise<GeneratedGame> {
+  const withPoints = /\/point\b/i.test(rawPrompt);
+  const prompt = rawPrompt.replace(/\/point\b/gi, "").trim();
+
+  const first = await requestGame(prompt, 0.5, withPoints);
   if (first && isValidGameHtml(first.code)) return first;
 
   // Retry once, more deterministically, if the first attempt was missing,
   // truncated, or didn't actually use the Canvas 2D API.
-  const second = await requestGame(prompt, 0.2);
+  const second = await requestGame(prompt, 0.2, withPoints);
   if (second && isValidGameHtml(second.code)) return second;
 
   const fallback = first ?? second;

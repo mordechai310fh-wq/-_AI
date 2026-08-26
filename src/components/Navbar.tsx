@@ -2,19 +2,21 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import Avatar from "@/components/Avatar";
 
 type Props = {
   username: string;
   role: string;
+  avatarUrl: string | null;
 };
 
 const LINKS = [
   { href: "/feed", label: "פיד", icon: "🏠" },
-  { href: "/live", label: "לייבים", icon: "🔴" },
+  { href: "/shop", label: "חנות", icon: "🛍️" },
   { href: "/ai", label: "מגניב AI", icon: "✨" },
 ];
 
-export default function Navbar({ username, role }: Props) {
+export default function Navbar({ username, role, avatarUrl }: Props) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -61,7 +63,10 @@ export default function Navbar({ username, role }: Props) {
       </nav>
 
       <div className="flex items-center gap-3">
-        <span className="hidden text-sm text-muted sm:inline">שלום, {username}</span>
+        <Link href={`/u/${username}`} className="flex items-center gap-2" title="הפרופיל שלי">
+          <span className="hidden text-sm text-muted sm:inline">{username}</span>
+          <Avatar username={username} avatarUrl={avatarUrl} size="sm" />
+        </Link>
         <button
           onClick={logout}
           className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:text-foreground"

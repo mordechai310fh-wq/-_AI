@@ -8,7 +8,7 @@ export type PostItem = {
   gameType: string | null;
   gameControls: string | null;
   createdAt: string;
-  author: { id: string; username: string };
+  author: { id: string; username: string; avatarUrl: string | null };
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
@@ -18,7 +18,7 @@ export type CommentItem = {
   id: string;
   text: string;
   createdAt: string;
-  author: { id: string; username: string };
+  author: { id: string; username: string; avatarUrl: string | null };
 };
 
 export type CurrentUser = {
@@ -30,4 +30,8 @@ export type CurrentUser = {
   banned: boolean;
   bannedUntil: string | null;
   banReason: string | null;
+  avatarUrl: string | null;
+  coins: number;
+  postCredits: number;
+  juniorChatCredits: number;
 };

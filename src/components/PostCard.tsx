@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { PostItem } from "@/lib/types";
 import CommentDrawer from "@/components/CommentDrawer";
 import GamePostFrame from "@/components/GamePostFrame";
 import PostMedia from "@/components/PostMedia";
+import Avatar from "@/components/Avatar";
 
 const GRADIENTS = [
   "from-[#fe2c55] to-[#8b1e3f]",
@@ -51,7 +53,7 @@ export default function PostCard({ post }: { post: PostItem }) {
   return (
     <section className="snap-item relative flex h-[calc(100dvh-64px)] w-full items-center justify-center overflow-hidden">
       {post.gameCode ? (
-        <GamePostFrame code={post.gameCode} gameType={post.gameType} controls={post.gameControls} />
+        <GamePostFrame postId={post.id} code={post.gameCode} gameType={post.gameType} controls={post.gameControls} />
       ) : post.imageUrl || post.videoUrl || post.audioUrl ? (
         <PostMedia imageUrl={post.imageUrl} videoUrl={post.videoUrl} audioUrl={post.audioUrl} />
       ) : (
@@ -61,7 +63,10 @@ export default function PostCard({ post }: { post: PostItem }) {
 
       <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-5 pb-24 md:pb-5">
         <div className="max-w-[75%]">
-          <p className="mb-1 font-semibold text-white">@{post.author.username}</p>
+          <Link href={`/u/${post.author.username}`} className="mb-1 flex items-center gap-2">
+            <Avatar username={post.author.username} avatarUrl={post.author.avatarUrl} size="sm" />
+            <span className="font-semibold text-white">@{post.author.username}</span>
+          </Link>
           <p className="whitespace-pre-wrap text-white/95">{post.text}</p>
         </div>
 

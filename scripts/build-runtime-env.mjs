@@ -5,9 +5,17 @@ import fs from "fs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 
-// Only what the packaged server actually needs at runtime. DATABASE_URL and
-// SOCKET_PORT are set by electron/main.js itself (userData path, fixed port).
-const KEYS = ["JWT_SECRET", "GROQ_API_KEY", "OPENROUTER_API_KEY", "OPENROUTER_MODEL"];
+// Only what the packaged server actually needs at runtime. DATABASE_URL is
+// set by electron/main.js itself (userData path).
+const KEYS = [
+  "JWT_SECRET",
+  "GROQ_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_MODEL",
+  "CLOUDINARY_CLOUD_NAME",
+  "CLOUDINARY_API_KEY",
+  "CLOUDINARY_API_SECRET",
+];
 
 const env = {};
 for (const key of KEYS) {

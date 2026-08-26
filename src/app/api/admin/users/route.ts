@@ -16,6 +16,9 @@ export async function GET() {
       hasAccess: true,
       bannedUntil: true,
       banReason: true,
+      coins: true,
+      postCredits: true,
+      juniorChatCredits: true,
       createdAt: true,
     },
   });

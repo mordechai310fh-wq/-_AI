@@ -1,5 +1,4 @@
 services:
-  # Next.js app - feed, auth, admin, AI, everything except live chat/WebRTC.
   - type: web
     name: megnivolim-web
     runtime: node
@@ -7,11 +6,6 @@ services:
     buildCommand: npm install --include=dev && npx prisma generate --schema=prisma/schema.postgres.prisma && npx prisma db push --schema=prisma/schema.postgres.prisma --accept-data-loss && node prisma/seed.mjs && npm run build
     startCommand: npm start
     envVars:
-      # Must match the socket service's name below - if you rename that
-      # service, update this URL to match (Render URLs are
-      # https://<service-name>.onrender.com).
-      - key: NEXT_PUBLIC_SOCKET_URL
-        value: https://megnivolim-socket.onrender.com
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
@@ -34,19 +28,4 @@ services:
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
-        sync: false
-
-  # Socket.io server - live chat, message likes, reactions, WebRTC signaling.
-  - type: web
-    name: megnivolim-socket
-    runtime: node
-    plan: free
-    buildCommand: npm install --include=dev && node scripts/build-socket.mjs
-    startCommand: node dist-server/socket-server.js
-    envVars:
-      # Must be the exact same values entered for megnivolim-web above -
-      # both services talk to the same database and verify the same tokens.
-      - key: DATABASE_URL
-        sync: false
-      - key: JWT_SECRET
         sync: false

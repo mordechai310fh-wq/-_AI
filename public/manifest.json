@@ -1,7 +1,7 @@
 {
   "name": "המגניבולים",
   "short_name": "המגניבולים",
-  "description": "רשת חברתית עם AI, פוסטים ולייבים",
+  "description": "רשת חברתית עם AI, פוסטים, משחקים וחנות",
   "start_url": "/feed",
   "scope": "/",
   "display": "standalone",

@@ -79,6 +79,9 @@ export default function GameMaker() {
           placeholder="לדוגמה: משחק שבו קופצים בין פלטפורמות ואוספים מטבעות"
           className="resize-none rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-accent"
         />
+        <p className="text-xs text-muted">
+          💡 תוסיף <span className="font-mono text-accent">/point</span> לתיאור כדי שהניקוד במשחק יהפוך למטבעות אמיתיים שאפשר להוציא בחנות.
+        </p>
 
         {error && <p className="text-sm text-accent">{error}</p>}
 

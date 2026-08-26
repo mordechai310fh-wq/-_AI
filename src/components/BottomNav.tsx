@@ -5,15 +5,12 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/feed", label: "פיד", icon: "🏠" },
-  { href: "/live", label: "לייבים", icon: "🔴" },
+  { href: "/shop", label: "חנות", icon: "🛍️" },
   { href: "/ai", label: "מגניב", icon: "✨" },
 ];
 
 export default function BottomNav({ role }: { role: string }) {
   const pathname = usePathname();
-
-  // Live rooms want the full screen - no floating nav bar over the video.
-  if (/^\/live\/.+/.test(pathname)) return null;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-border bg-background/90 py-2 backdrop-blur md:hidden">

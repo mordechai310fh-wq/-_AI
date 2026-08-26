@@ -12,7 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const comments = await prisma.comment.findMany({
     where: { postId },
     orderBy: { createdAt: "asc" },
-    include: { author: { select: { id: true, username: true } } },
+    include: { author: { select: { id: true, username: true, avatarUrl: true } } },
   });
 
   return NextResponse.json({ items: comments });
@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const comment = await prisma.comment.create({
     data: { postId, authorId: user.id, text: parsed.data.text },
-    include: { author: { select: { id: true, username: true } } },
+    include: { author: { select: { id: true, username: true, avatarUrl: true } } },
   });
 
   return NextResponse.json({ item: comment });

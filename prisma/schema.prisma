@@ -16,14 +16,15 @@ model User {
   hasAccess    Boolean  @default(false)
   bannedUntil  DateTime?
   banReason    String?
+  avatarUrl    String?
+  coins             Int      @default(0)
+  postCredits       Int      @default(0) // lets a user without full access post one video
+  juniorChatCredits Int      @default(0) // messages left with the limited AI chat
   createdAt    DateTime @default(now())
 
   posts         Post[]
   comments      Comment[]
   likes         Like[]
-  liveRooms     LiveRoom[]
-  liveMessages  LiveChatMessage[]
-  liveMsgLikes  LiveChatMessageLike[]
   aiMessages    AiMessage[]
 }
 
@@ -63,43 +64,6 @@ model Comment {
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   text      String
   createdAt DateTime @default(now())
-}
-
-model LiveRoom {
-  id            String    @id @default(cuid())
-  hostId        String
-  host          User      @relation(fields: [hostId], references: [id], onDelete: Cascade)
-  title         String
-  status        String    @default("LIVE")
-  broadcastMode String    @default("webrtc") // "webrtc" (in-browser) or "rtmp" (OBS/streaming software)
-  streamKey     String?   @unique // only set for broadcastMode "rtmp"
-  createdAt     DateTime  @default(now())
-  endedAt       DateTime?
-
-  messages  LiveChatMessage[]
-}
-
-model LiveChatMessage {
-  id         String   @id @default(cuid())
-  roomId     String
-  room       LiveRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  authorId   String
-  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  text       String
-  createdAt  DateTime @default(now())
-
-  likes      LiveChatMessageLike[]
-}
-
-model LiveChatMessageLike {
-  id        String          @id @default(cuid())
-  messageId String
-  message   LiveChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime        @default(now())
-
-  @@unique([messageId, userId])
 }
 
 model AiMessage {

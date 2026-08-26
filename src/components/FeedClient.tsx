@@ -7,7 +7,7 @@ import CreatePostModal from "@/components/CreatePostModal";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 
 export default function FeedClient() {
-  const { hasFullAccess } = useCurrentUser();
+  const { user } = useCurrentUser();
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -85,7 +85,7 @@ export default function FeedClient() {
       <div ref={sentinelRef} className="h-1 w-full" />
       {loading && <p className="py-4 text-center text-sm text-muted">טוען...</p>}
 
-      {hasFullAccess && <CreatePostModal onCreated={handleCreated} />}
+      {user && <CreatePostModal onCreated={handleCreated} />}
     </div>
   );
 }

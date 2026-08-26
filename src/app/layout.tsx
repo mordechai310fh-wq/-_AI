@@ -10,7 +10,7 @@ const heebo = Heebo({
 
 export const metadata: Metadata = {
   title: "המגניבולים",
-  description: "רשת חברתית עם AI, פוסטים ולייבים בעברית",
+  description: "רשת חברתית עם AI, פוסטים, משחקים וחנות בעברית",
   manifest: "/manifest.json",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "המגניבולים" },

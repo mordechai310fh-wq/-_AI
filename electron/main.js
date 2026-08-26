@@ -6,7 +6,6 @@ const http = require("http");
 
 const isDev = !app.isPackaged;
 const NEXT_PORT = 3000;
-const SOCKET_PORT = 4001;
 
 function resourcePath(...segments) {
   // In dev this repo's root; in a packaged app, electron-builder's
@@ -39,7 +38,6 @@ function ensureUserData() {
 }
 
 let nextProcess = null;
-let socketProcess = null;
 
 function startServers() {
   const { dbPath, uploadsDir } = ensureUserData();
@@ -60,15 +58,6 @@ function startServers() {
   });
   nextProcess.on("exit", (code) => {
     if (code) console.error("Next server exited with code", code);
-  });
-
-  const socketServerPath = resourcePath("dist-server", "socket-server.js");
-  socketProcess = fork(socketServerPath, [], {
-    env: { ...commonEnv, SOCKET_PORT: String(SOCKET_PORT) },
-    silent: false,
-  });
-  socketProcess.on("exit", (code) => {
-    if (code) console.error("Socket server exited with code", code);
   });
 }
 
@@ -126,5 +115,4 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   nextProcess?.kill();
-  socketProcess?.kill();
 });

@@ -15,6 +15,10 @@ export async function GET() {
       banned: isBanned(user),
       bannedUntil: user.bannedUntil,
       banReason: user.banReason,
+      avatarUrl: user.avatarUrl,
+      coins: user.coins,
+      postCredits: user.postCredits,
+      juniorChatCredits: user.juniorChatCredits,
     },
   });
 }

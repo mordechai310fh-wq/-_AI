@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/auth";
-import { requireAccess } from "@/lib/requireAccess";
+import { getCurrentUser, isBanned } from "@/lib/auth";
 import { askAi } from "@/lib/groq";
 
 const HISTORY_LIMIT = 20;
@@ -25,13 +24,29 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const { user, error } = await requireAccess();
-  if (error) return error;
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "לא מחובר" }, { status: 401 });
+  if (isBanned(user)) return NextResponse.json({ error: "החשבון שלך מושעה" }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "קלט לא תקין" }, { status: 400 });
+  }
+
+  // Full access (owner/granted) chats freely. Everyone else needs a
+  // מגניב ג'וניור credit bought in the shop, consumed per message.
+  if (!user.isOwner && !user.hasAccess) {
+    const spent = await prisma.user.updateMany({
+      where: { id: user.id, juniorChatCredits: { gt: 0 } },
+      data: { juniorChatCredits: { decrement: 1 } },
+    });
+    if (spent.count === 0) {
+      return NextResponse.json(
+        { error: "אין לך גישה לצ'אט עם מגניב. אפשר לקנות מגניב ג'וניור בחנות." },
+        { status: 403 }
+      );
+    }
   }
 
   const userMessage = await prisma.aiMessage.create({

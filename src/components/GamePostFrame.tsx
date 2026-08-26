@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function GamePostFrame({
+  postId,
   code,
   gameType,
   controls,
 }: {
+  postId: string;
   code: string;
   gameType: string | null;
   controls: string | null;
@@ -15,6 +17,7 @@ export default function GamePostFrame({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [playing, setPlaying] = useState(false);
   const [showControlsHint, setShowControlsHint] = useState(false);
+  const [coinToast, setCoinToast] = useState<number | null>(null);
 
   // Iframes are a separate browsing context: keydown/keyup only reach the
   // game once the iframe itself has focus, otherwise "can't move/shoot".
@@ -26,6 +29,36 @@ export default function GamePostFrame({
     const timer = setTimeout(() => setShowControlsHint(false), 3500);
     return () => clearTimeout(timer);
   }, [playing, controls]);
+
+  // Games built with "/point" report score increases via postMessage (see
+  // src/lib/groq.ts's POINTS_INSTRUCTIONS) - forward those to the server,
+  // which caps and rate-limits before crediting coins (the game code itself
+  // isn't trusted, it's sandboxed AI output).
+  useEffect(() => {
+    if (!playing) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.data?.type !== "megnivolim-points") return;
+      const points = Number(e.data.points);
+      if (!Number.isFinite(points) || points <= 0) return;
+
+      fetch("/api/points/award", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, points }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.awarded) {
+            setCoinToast(data.awarded);
+            setTimeout(() => setCoinToast(null), 1500);
+          }
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [playing, postId]);
 
   // Pause (unmount) the game once it's scrolled mostly out of view, so the
   // feed doesn't keep many game loops running at once.
@@ -58,6 +91,13 @@ export default function GamePostFrame({
             <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center">
               <span className="rounded-full bg-black/70 px-4 py-1.5 text-sm text-white">
                 🎮 {controls}
+              </span>
+            </div>
+          )}
+          {coinToast && (
+            <div className="pointer-events-none absolute inset-x-0 top-16 flex justify-center">
+              <span className="rounded-full bg-yellow-500/90 px-4 py-1.5 text-sm font-semibold text-black">
+                🪙 +{coinToast}
               </span>
             </div>
           )}
