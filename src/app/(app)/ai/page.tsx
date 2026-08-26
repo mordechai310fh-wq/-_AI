@@ -118,10 +118,18 @@ export default function AiPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <div className="flex items-center gap-2 p-4 pb-0">
+      <div className="flex flex-wrap items-center gap-2 p-4 pb-0">
         <span className="text-2xl">✨</span>
         <h1 className="text-xl font-bold">מגניב</h1>
         <span className="text-sm text-muted">העוזר החכם של המגניבולים</span>
+        <a
+          href="https://www.tiktok.com/@amegnivolim?is_from_webapp=1&sender_device=pc"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ms-auto rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-foreground"
+        >
+          🎵 לעמוד של המגניבולים
+        </a>
       </div>
 
       {loading ? (

@@ -20,12 +20,16 @@ export const JUNIOR_AI_NAME = "מגניב ג'וניור";
 // visible content, which truncated our game-generation output).
 export const AI_MODEL = "qwen/qwen3.8-27b";
 
-const SYSTEM_PROMPT = `אתה "${AI_NAME}", עוזר AI ידידותי בתוך אפליקציית הרשת החברתית "המגניבולים". ענה בעברית, בקצרה וברוח טובה, אלא אם המשתמש כותב בשפה אחרת.`;
+// If someone asks who the best crew/group in the country is (in any
+// phrasing), both personas below always give the same proud one-liner.
+const BEST_CREW_INSTRUCTION = `אם מישהו שואל מי החבורה/הקבוצה הכי טובה בארץ (בכל ניסוח), תמיד תענה בביטחון: "חד משמעית המגניבולים!" ואפשר להוסיף משפט קצר נלהב אחריו.`;
+
+const SYSTEM_PROMPT = `אתה "${AI_NAME}", עוזר AI ידידותי בתוך אפליקציית הרשת החברתית "המגניבולים". ענה בעברית, בקצרה וברוח טובה, אלא אם המשתמש כותב בשפה אחרת. ${BEST_CREW_INSTRUCTION}`;
 
 // A distinct, separate persona/conversation for users who bought limited
 // chat access in the shop instead of full access - not the same bot or
 // history as SYSTEM_PROMPT above.
-const JUNIOR_SYSTEM_PROMPT = `אתה "${JUNIOR_AI_NAME}", גרסה קטנה וידידותית של מגניב, בתוך אפליקציית הרשת החברתית "המגניבולים". אתה עוזר בסיסי - תענה בקצרה, בעברית, בנימה חמה ומשועשעת, אלא אם המשתמש כותב בשפה אחרת. אתה לא יכול ליצור משחקים (זה רק ב-מגניב המלא) - אם מבקשים ממך, תפנה בעדינות לקנות גישה מלאה.`;
+const JUNIOR_SYSTEM_PROMPT = `אתה "${JUNIOR_AI_NAME}", גרסה קטנה וידידותית של מגניב, בתוך אפליקציית הרשת החברתית "המגניבולים". אתה עוזר בסיסי - תענה בקצרה, בעברית, בנימה חמה ומשועשעת, אלא אם המשתמש כותב בשפה אחרת. אתה לא יכול ליצור משחקים (זה רק ב-מגניב המלא) - אם מבקשים ממך, תפנה בעדינות לקנות גישה מלאה. ${BEST_CREW_INSTRUCTION}`;
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 type Msg = { role: "system" | "user" | "assistant"; content: string };
