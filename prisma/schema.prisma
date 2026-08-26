@@ -30,6 +30,7 @@ model User {
   aiMessages    AiMessage[]
   adminMessages AdminMessage[]
   gameScores    GameScore[]
+  aiProjects    AiProject[]
 }
 
 model Post {
@@ -90,7 +91,20 @@ model AiMessage {
   role      String
   content   String
   tier      String   @default("full") // "full" (מגניב) or "junior" (מגניב ג'וניור) - kept as separate conversations
+  projectId String? // null = the default (non-project) conversation for this tier
+  project   AiProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+model AiProject {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier      String // "full" or "junior" - a project belongs to one chat persona
+  name      String      @default("פרויקט חדש")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
 }
 
 model AdminMessage {

@@ -15,9 +15,10 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "לא מחובר" }, { status: 401 });
 
   const tier = parseTier(req.nextUrl.searchParams.get("tier"));
+  const projectId = req.nextUrl.searchParams.get("projectId");
 
   const messages = await prisma.aiMessage.findMany({
-    where: { userId: user.id, tier },
+    where: { userId: user.id, tier, projectId: projectId || null },
     orderBy: { createdAt: "asc" },
     take: 100,
   });
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
 const schema = z.object({
   message: z.string().trim().min(1).max(4000),
   tier: z.enum(["full", "junior"]).default("full"),
+  projectId: z.string().nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -42,6 +44,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { tier } = parsed.data;
+  const projectId = parsed.data.projectId || null;
+
+  if (projectId) {
+    const project = await prisma.aiProject.findUnique({ where: { id: projectId } });
+    if (!project || project.userId !== user.id || project.tier !== tier) {
+      return NextResponse.json({ error: "הפרויקט לא נמצא" }, { status: 404 });
+    }
+  }
 
   if (tier === "full") {
     if (!user.isOwner && !user.hasAccess) {
@@ -66,11 +76,11 @@ export async function POST(req: NextRequest) {
   }
 
   const userMessage = await prisma.aiMessage.create({
-    data: { userId: user.id, role: "user", content: parsed.data.message, tier },
+    data: { userId: user.id, role: "user", content: parsed.data.message, tier, projectId },
   });
 
   const recent = await prisma.aiMessage.findMany({
-    where: { userId: user.id, tier },
+    where: { userId: user.id, tier, projectId },
     orderBy: { createdAt: "desc" },
     take: HISTORY_LIMIT,
   });
@@ -87,8 +97,12 @@ export async function POST(req: NextRequest) {
   }
 
   const assistantMessage = await prisma.aiMessage.create({
-    data: { userId: user.id, role: "assistant", content: replyText, tier },
+    data: { userId: user.id, role: "assistant", content: replyText, tier, projectId },
   });
+
+  if (projectId) {
+    await prisma.aiProject.update({ where: { id: projectId }, data: { updatedAt: new Date() } });
+  }
 
   return NextResponse.json({ userMessage, assistantMessage });
 }

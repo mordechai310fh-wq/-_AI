@@ -33,6 +33,7 @@ model User {
   aiMessages    AiMessage[]
   adminMessages AdminMessage[]
   gameScores    GameScore[]
+  aiProjects    AiProject[]
 }
 
 model Post {
@@ -93,7 +94,20 @@ model AiMessage {
   role      String
   content   String
   tier      String   @default("full")
+  projectId String?
+  project   AiProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+model AiProject {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier      String
+  name      String      @default("פרויקט חדש")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
 }
 
 model AdminMessage {

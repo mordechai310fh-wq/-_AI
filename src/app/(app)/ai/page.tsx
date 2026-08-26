@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import LockedFeature from "@/components/LockedFeature";
 import GameMaker from "@/components/GameMaker";
 
 type Msg = { id: string; role: string; content: string };
+type ProjectSummary = { id: string; name: string; updatedAt: string };
 
 function ChatTab({ tier, placeholder }: { tier: "full" | "junior"; placeholder: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -14,17 +15,59 @@ function ChatTab({ tier, placeholder }: { tier: "full" | "junior"; placeholder: 
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+
+  const loadProjects = useCallback(async () => {
+    setLoadingProjects(true);
+    try {
+      const res = await fetch(`/api/ai/projects?tier=${tier}`);
+      const data = await res.json();
+      if (res.ok) setProjects(data.items);
+    } finally {
+      setLoadingProjects(false);
+    }
+  }, [tier]);
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/ai/chat?tier=${tier}`)
+    const url = activeProjectId
+      ? `/api/ai/chat?tier=${tier}&projectId=${activeProjectId}`
+      : `/api/ai/chat?tier=${tier}`;
+    fetch(url)
       .then((r) => r.json())
       .then((data) => setMessages(data.items ?? []))
       .finally(() => setLoading(false));
-  }, [tier]);
+  }, [tier, activeProjectId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  async function newProject() {
+    const res = await fetch("/api/ai/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tier }),
+    });
+    const data = await res.json();
+    if (!res.ok) return;
+    setProjects((prev) => [data.item, ...prev]);
+    setActiveProjectId(data.item.id);
+  }
+
+  async function deleteProject(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm("למחוק את הפרויקט הזה?")) return;
+    await fetch(`/api/ai/projects/${id}`, { method: "DELETE" }).catch(() => {});
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    if (activeProjectId === id) setActiveProjectId(null);
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -40,7 +83,7 @@ function ChatTab({ tier, placeholder }: { tier: "full" | "junior"; placeholder: 
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, tier }),
+        body: JSON.stringify({ message: text, tier, projectId: activeProjectId }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -49,6 +92,13 @@ function ChatTab({ tier, placeholder }: { tier: "full" | "junior"; placeholder: 
           data.userMessage,
           data.assistantMessage,
         ]);
+        if (activeProjectId) {
+          setProjects((prev) => {
+            const rest = prev.filter((p) => p.id !== activeProjectId);
+            const current = prev.find((p) => p.id === activeProjectId);
+            return current ? [{ ...current, updatedAt: new Date().toISOString() }, ...rest] : prev;
+          });
+        }
       } else {
         setMessages((prev) => [
           ...prev.filter((m) => m.id !== tempId),
@@ -63,6 +113,42 @@ function ChatTab({ tier, placeholder }: { tier: "full" | "junior"; placeholder: 
 
   return (
     <div className="flex h-[calc(100dvh-64px-52px-64px)] flex-col p-4 md:h-[calc(100dvh-64px-52px)]">
+      <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => setActiveProjectId(null)}
+          className={`shrink-0 rounded-full border px-3 py-1 text-xs ${
+            activeProjectId === null
+              ? "border-accent bg-accent/10 text-accent"
+              : "border-border text-muted hover:text-foreground"
+          }`}
+        >
+          💬 שיחה כללית
+        </button>
+        <button
+          onClick={newProject}
+          className="shrink-0 rounded-full border border-dashed border-accent px-3 py-1 text-xs font-semibold text-accent"
+        >
+          + פרויקט חדש
+        </button>
+        {loadingProjects && <span className="text-xs text-muted">טוען...</span>}
+        {projects.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setActiveProjectId(p.id)}
+            className={`group flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+              activeProjectId === p.id
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-border text-muted hover:text-foreground"
+            }`}
+          >
+            {p.name}
+            <span onClick={(e) => deleteProject(p.id, e)} className="opacity-0 group-hover:opacity-100">
+              ✕
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto rounded-2xl border border-border bg-card p-4">
         {loading && <p className="text-sm text-muted">טוען שיחה...</p>}
         {!loading && messages.length === 0 && (
@@ -173,9 +259,11 @@ export default function AiPage() {
             )}
           </div>
 
-          {activeTab === "chat" && <ChatTab tier="full" placeholder="כתוב הודעה למגניב..." />}
+          {activeTab === "chat" && <ChatTab key="full" tier="full" placeholder="כתוב הודעה למגניב..." />}
           {activeTab === "game" && <GameMaker />}
-          {activeTab === "junior" && <ChatTab tier="junior" placeholder="כתוב הודעה למגניב ג'וניור..." />}
+          {activeTab === "junior" && (
+            <ChatTab key="junior" tier="junior" placeholder="כתוב הודעה למגניב ג'וניור..." />
+          )}
         </>
       )}
     </div>
