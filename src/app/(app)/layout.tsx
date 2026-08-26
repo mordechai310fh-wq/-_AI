@@ -5,6 +5,7 @@ import BottomNav from "@/components/BottomNav";
 import LogoutButton from "@/components/LogoutButton";
 import AvatarOnboarding from "@/components/AvatarOnboarding";
 import MessageInbox from "@/components/MessageInbox";
+import TikTokSidebar from "@/components/TikTokSidebar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -23,7 +24,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-full flex-1 flex-col">
+    <div className="flex min-h-full flex-1 flex-col md:ps-24">
+      <TikTokSidebar />
       <Navbar username={user.username} role={user.role} avatarUrl={user.avatarUrl} />
       <div className="flex flex-1 flex-col">{children}</div>
       <BottomNav role={user.role} />
