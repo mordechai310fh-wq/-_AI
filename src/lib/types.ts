@@ -32,6 +32,7 @@ export type CurrentUser = {
   banReason: string | null;
   avatarUrl: string | null;
   coins: number;
+  gamePoints: number;
   postCredits: number;
   juniorChatCredits: number;
 };

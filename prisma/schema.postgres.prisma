@@ -21,6 +21,7 @@ model User {
   banReason    String?
   avatarUrl    String?
   coins             Int      @default(0)
+  gamePoints        Int      @default(0)
   postCredits       Int      @default(0)
   juniorChatCredits Int      @default(0)
   lastSeenMessageAt DateTime?
@@ -31,6 +32,7 @@ model User {
   likes         Like[]
   aiMessages    AiMessage[]
   adminMessages AdminMessage[]
+  gameScores    GameScore[]
 }
 
 model Post {
@@ -48,6 +50,19 @@ model Post {
 
   likes     Like[]
   comments  Comment[]
+  scores    GameScore[]
+}
+
+model GameScore {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([postId, userId])
 }
 
 model Like {

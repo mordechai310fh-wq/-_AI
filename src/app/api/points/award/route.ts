@@ -7,7 +7,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 // AI-generated games (sandboxed, allow-scripts only) report score increases
 // via postMessage - see GamePostFrame.tsx. Since that game code isn't
 // trustworthy, every award is capped hard and rate-limited per user so a
-// buggy or malicious game can't mint unlimited coins.
+// buggy or malicious game can't mint unlimited points.
 const MAX_POINTS_PER_CALL = 20;
 
 const schema = z.object({
@@ -37,10 +37,18 @@ export async function POST(req: NextRequest) {
   }
 
   const awarded = Math.min(Math.floor(parsed.data.points), MAX_POINTS_PER_CALL);
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    data: { coins: { increment: awarded } },
-  });
 
-  return NextResponse.json({ awarded, coins: updated.coins });
+  const [updated] = await Promise.all([
+    prisma.user.update({
+      where: { id: user.id },
+      data: { gamePoints: { increment: awarded } },
+    }),
+    prisma.gameScore.upsert({
+      where: { postId_userId: { postId: post.id, userId: user.id } },
+      create: { postId: post.id, userId: user.id, score: awarded },
+      update: { score: { increment: awarded } },
+    }),
+  ]);
+
+  return NextResponse.json({ awarded, gamePoints: updated.gamePoints });
 }

@@ -60,6 +60,29 @@ export default function GamePostFrame({
     return () => window.removeEventListener("message", onMessage);
   }, [playing, postId]);
 
+  // Games built with "/leaderboard" ask for the top scores via postMessage -
+  // fetch them (the iframe's own fetch wouldn't carry the session cookie)
+  // and hand the data back the same way.
+  useEffect(() => {
+    if (!playing) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      if (e.data?.type !== "megnivolim-leaderboard-request") return;
+
+      fetch(`/api/posts/${postId}/leaderboard`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "megnivolim-leaderboard-data", entries: data?.items ?? [] },
+            "*"
+          );
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [playing, postId]);
+
   // Pause (unmount) the game once it's scrolled mostly out of view, so the
   // feed doesn't keep many game loops running at once.
   useEffect(() => {
@@ -97,7 +120,7 @@ export default function GamePostFrame({
           {coinToast && (
             <div className="pointer-events-none absolute inset-x-0 top-16 flex justify-center">
               <span className="rounded-full bg-yellow-500/90 px-4 py-1.5 text-sm font-semibold text-black">
-                🪙 +{coinToast}
+                🎯 +{coinToast} נקודות
               </span>
             </div>
           )}

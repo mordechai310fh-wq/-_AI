@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { code, controls } = await generateGame(parsed.data.prompt, parsed.data.imageUrl);
-    return NextResponse.json({ code, controls });
+    const { code, controls, title } = await generateGame(parsed.data.prompt, parsed.data.imageUrl);
+    return NextResponse.json({ code, controls, title });
   } catch (err) {
     console.error("generate-game error:", err);
     const status = (err as { status?: number })?.status;

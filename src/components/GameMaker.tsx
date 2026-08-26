@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { GAME_SLASH_COMMANDS } from "@/lib/groq";
+
+// Detects a trailing "/foo" token being typed (not yet followed by a space)
+// so we can show a matching-commands dropdown.
+function trailingSlashToken(text: string): string | null {
+  const match = text.match(/(^|\s)(\/[a-zA-Z]*)$/);
+  return match ? match[2] : null;
+}
 
 export default function GameMaker() {
   const router = useRouter();
@@ -10,16 +18,29 @@ export default function GameMaker() {
   const [uploadingRef, setUploadingRef] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [controls, setControls] = useState<string | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
   const previewRef = useRef<HTMLIFrameElement>(null);
   const refImageInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (code) previewRef.current?.focus();
   }, [code]);
+
+  const slashToken = trailingSlashToken(prompt);
+  const slashMatches = slashToken
+    ? GAME_SLASH_COMMANDS.filter((c) => c.command.startsWith(slashToken))
+    : [];
+
+  function insertSlashCommand(command: string) {
+    if (!slashToken) return;
+    setPrompt((prev) => prev.slice(0, prev.length - slashToken.length) + command + " ");
+    textareaRef.current?.focus();
+  }
 
   async function handleRefImage(file: File) {
     setUploadingRef(true);
@@ -45,6 +66,7 @@ export default function GameMaker() {
     setError(null);
     setCode(null);
     setControls(null);
+    setTitle(null);
     setPublished(false);
     try {
       const res = await fetch("/api/ai/generate-game", {
@@ -56,6 +78,7 @@ export default function GameMaker() {
       if (!res.ok) throw new Error(data.error ?? "שגיאה ביצירת המשחק");
       setCode(data.code);
       setControls(data.controls ?? null);
+      setTitle(data.title ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {
@@ -72,7 +95,7 @@ export default function GameMaker() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: `🎮 משחק שנוצר עם מגניב: ${prompt}`,
+          text: title ? `🎮 ${title}` : `🎮 משחק שנוצר עם מגניב: ${prompt}`,
           gameCode: code,
           gameType: "2D",
           gameControls: controls,
@@ -92,15 +115,33 @@ export default function GameMaker() {
     <div className="flex h-[calc(100dvh-64px)] flex-col gap-4 overflow-y-auto p-4 pb-20 md:pb-4">
       <form onSubmit={generate} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
         <label className="text-sm text-muted">תאר את המשחק שאתה רוצה שמגניב ייצור</label>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={3}
-          placeholder="לדוגמה: משחק שבו קופצים בין פלטפורמות ואוספים מטבעות"
-          className="resize-none rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-accent"
-        />
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={3}
+            placeholder="לדוגמה: משחק שבו קופצים בין פלטפורמות ואוספים מטבעות. הקלד / לרשימת פקודות"
+            className="w-full resize-none rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-accent"
+          />
+          {slashMatches.length > 0 && (
+            <div className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+              {slashMatches.map((c) => (
+                <button
+                  key={c.command}
+                  type="button"
+                  onClick={() => insertSlashCommand(c.command)}
+                  className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-right hover:bg-background"
+                >
+                  <span className="font-mono text-sm text-accent">{c.command}</span>
+                  <span className="text-xs text-muted">{c.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <p className="text-xs text-muted">
-          💡 תוסיף <span className="font-mono text-accent">/point</span> לתיאור כדי שהניקוד במשחק יהפוך למטבעות אמיתיים שאפשר להוציא בחנות.
+          💡 פקודות זמינות: {GAME_SLASH_COMMANDS.map((c) => c.command).join(" · ")}
         </p>
 
         <div className="flex items-center gap-2">
@@ -154,7 +195,7 @@ export default function GameMaker() {
       {code && (
         <div className="flex flex-1 flex-col gap-3 rounded-2xl border border-border bg-card p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">תצוגה מקדימה</h2>
+            <h2 className="text-sm font-semibold">{title ?? "תצוגה מקדימה"}</h2>
             {published ? (
               <button
                 onClick={() => router.push("/feed")}

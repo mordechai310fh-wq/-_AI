@@ -18,6 +18,7 @@ model User {
   banReason    String?
   avatarUrl    String?
   coins             Int      @default(0)
+  gamePoints        Int      @default(0) // earned from /point games, exchanged for coins in the shop
   postCredits       Int      @default(0) // lets a user without full access post one video
   juniorChatCredits Int      @default(0) // messages left with the limited AI chat
   lastSeenMessageAt DateTime? // admin messages (global/private) created after this are still "unread"
@@ -28,6 +29,7 @@ model User {
   likes         Like[]
   aiMessages    AiMessage[]
   adminMessages AdminMessage[]
+  gameScores    GameScore[]
 }
 
 model Post {
@@ -45,6 +47,19 @@ model Post {
 
   likes     Like[]
   comments  Comment[]
+  scores    GameScore[]
+}
+
+model GameScore {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score     Int      @default(0) // best score this user got on this specific game
+  updatedAt DateTime @updatedAt
+
+  @@unique([postId, userId])
 }
 
 model Like {

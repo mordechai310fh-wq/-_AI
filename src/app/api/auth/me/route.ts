@@ -17,6 +17,7 @@ export async function GET() {
       banReason: user.banReason,
       avatarUrl: user.avatarUrl,
       coins: user.coins,
+      gamePoints: user.gamePoints,
       postCredits: user.postCredits,
       juniorChatCredits: user.juniorChatCredits,
     },

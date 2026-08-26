@@ -32,13 +32,17 @@ const ITEMS: { key: ItemKey; title: string; desc: string; cost: number; emoji: s
 export default function ShopClient() {
   const { user, loading } = useCurrentUser();
   const [coins, setCoins] = useState<number | null>(null);
+  const [gamePoints, setGamePoints] = useState<number | null>(null);
   const [postCredits, setPostCredits] = useState<number | null>(null);
   const [juniorChatCredits, setJuniorChatCredits] = useState<number | null>(null);
   const [buying, setBuying] = useState<ItemKey | null>(null);
+  const [exchanging, setExchanging] = useState(false);
+  const [exchangeAmount, setExchangeAmount] = useState(100);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const displayCoins = coins ?? user?.coins ?? 0;
+  const displayGamePoints = gamePoints ?? user?.gamePoints ?? 0;
   const displayPostCredits = postCredits ?? user?.postCredits ?? 0;
   const displayJuniorChat = juniorChatCredits ?? user?.juniorChatCredits ?? 0;
 
@@ -66,6 +70,29 @@ export default function ShopClient() {
     }
   }
 
+  async function exchangePoints() {
+    if (exchanging || exchangeAmount < 1) return;
+    setExchanging(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/shop/exchange-points", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: exchangeAmount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      setCoins(data.coins);
+      setGamePoints(data.gamePoints);
+      setMessage("ההמרה בוצעה בהצלחה!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setExchanging(false);
+    }
+  }
+
   if (loading) return null;
 
   return (
@@ -77,8 +104,30 @@ export default function ShopClient() {
           יש לך {displayPostCredits} העלאות וידאו זמינות ו-{displayJuniorChat} הודעות מגניב ג&apos;וניור.
         </p>
         <p className="mt-2 text-xs text-muted">
-          איך משיגים מטבעות? שחקו במשחקים שנוצרו עם <span className="font-mono">/point</span> במגניב AI - הניקוד שם הופך למטבעות אמיתיים.
+          איך משיגים נקודות? שחקו במשחקים שנוצרו עם <span className="font-mono">/point</span> ב-מגניב AI.
         </p>
+      </div>
+
+      <div className="mb-6 flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">🎯 נקודות משחק: {displayGamePoints}</p>
+        <p className="text-xs text-muted">אפשר להמיר נקודות משחק למטבעות (1 נקודה = 1 מטבע).</p>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={1}
+            max={displayGamePoints || undefined}
+            value={exchangeAmount}
+            onChange={(e) => setExchangeAmount(Number(e.target.value))}
+            className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          <button
+            onClick={exchangePoints}
+            disabled={exchanging || displayGamePoints < exchangeAmount || exchangeAmount < 1}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {exchanging ? "ממיר..." : "המר למטבעות"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-accent">{error}</p>}
