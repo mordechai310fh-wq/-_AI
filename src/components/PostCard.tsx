@@ -31,8 +31,37 @@ export default function PostCard({ post }: { post: PostItem }) {
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
+  const [donating, setDonating] = useState(false);
+  const [donateError, setDonateError] = useState<string | null>(null);
+  const [donateSuccess, setDonateSuccess] = useState(false);
 
   const canDelete = !!user && (user.id === post.author.id || user.isOwner || user.role === "ADMIN");
+  const canDonate = !!user && user.id !== post.author.id && !!(post.imageUrl || post.videoUrl);
+
+  async function donate(amount: number) {
+    if (donating) return;
+    setDonating(true);
+    setDonateError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/donate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "שגיאה");
+      setDonateSuccess(true);
+      setTimeout(() => {
+        setDonateSuccess(false);
+        setDonateOpen(false);
+      }, 1200);
+    } catch (err) {
+      setDonateError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setDonating(false);
+    }
+  }
 
   async function deletePost() {
     if (deleting || !confirm("למחוק את הפוסט הזה?")) return;
@@ -103,6 +132,15 @@ export default function PostCard({ post }: { post: PostItem }) {
             <span className="text-3xl">💬</span>
             <span className="text-xs">{commentCount}</span>
           </button>
+          {canDonate && (
+            <button
+              onClick={() => setDonateOpen(true)}
+              className="flex flex-col items-center gap-1 text-white"
+              title="תרום מטבעות"
+            >
+              <span className="text-3xl">🪙</span>
+            </button>
+          )}
           {canDelete && (
             <button
               onClick={deletePost}
@@ -115,6 +153,45 @@ export default function PostCard({ post }: { post: PostItem }) {
           )}
         </div>
       </div>
+
+      {donateOpen && (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 px-6"
+          onClick={() => !donating && setDonateOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xs rounded-2xl border border-border bg-card p-5 text-center"
+          >
+            {donateSuccess ? (
+              <p className="text-sm font-semibold text-emerald-500">🎉 תרמת בהצלחה!</p>
+            ) : (
+              <>
+                <p className="mb-3 text-sm font-semibold">🪙 תרום מטבעות ל-@{post.author.username}</p>
+                <div className="mb-3 grid grid-cols-4 gap-2">
+                  {[10, 50, 100, 500].map((amount) => (
+                    <button
+                      key={amount}
+                      onClick={() => donate(amount)}
+                      disabled={donating}
+                      className="rounded-lg bg-accent px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {amount}
+                    </button>
+                  ))}
+                </div>
+                {donateError && <p className="mb-2 text-xs text-accent">{donateError}</p>}
+                <button
+                  onClick={() => setDonateOpen(false)}
+                  className="text-xs text-muted hover:text-foreground"
+                >
+                  ביטול
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <CommentDrawer
         postId={post.id}
