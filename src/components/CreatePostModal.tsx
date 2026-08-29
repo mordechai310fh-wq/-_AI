@@ -94,7 +94,7 @@ export default function CreatePostModal({ onCreated }: { onCreated: (post: PostI
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 end-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl text-white shadow-lg transition hover:opacity-90 md:bottom-6 md:end-8"
+        className="fixed bottom-48 end-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl text-white shadow-lg transition hover:opacity-90 md:bottom-6 md:end-8"
         title="פוסט חדש"
       >
         +
